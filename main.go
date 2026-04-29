@@ -143,8 +143,28 @@ func main() {
 			},
 			&cli.BoolFlag{
 				Name:  "enable-gofile-upload",
-				Usage: "Enable automatic upload to GoFile.io after recording (deletes local file after upload)",
+				Usage: "Enable automatic upload to multiple hosts (GoFile, TurboViPlay, VOE.sx, Streamtape) after recording",
 				Value: false,
+			},
+			&cli.StringFlag{
+				Name:  "turboviplay-api-key",
+				Usage: "TurboViPlay.com API key for video uploads",
+				Value: "",
+			},
+			&cli.StringFlag{
+				Name:  "voesx-api-key",
+				Usage: "VOE.sx API key for video uploads",
+				Value: "",
+			},
+			&cli.StringFlag{
+				Name:  "streamtape-login",
+				Usage: "Streamtape.com login for video uploads",
+				Value: "",
+			},
+			&cli.StringFlag{
+				Name:  "streamtape-api-key",
+				Usage: "Streamtape.com API key for video uploads",
+				Value: "",
 			},
 			&cli.StringFlag{
 				Name:  "supabase-url",
@@ -175,6 +195,10 @@ func start(c *cli.Context) error {
 	if err := manager.LoadSettings(); err != nil {
 		return fmt.Errorf("load settings: %w", err)
 	}
+	
+	// Initialize Supabase client if configured
+	server.InitSupabase()
+	
 	server.Manager, err = manager.New()
 	if err != nil {
 		return fmt.Errorf("new manager: %w", err)

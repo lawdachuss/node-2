@@ -130,8 +130,18 @@ type Config struct {
 	NotifyStreamOnline  bool
 	StripchatPDKey      string // MOUFLON v2 decryption key; auto-extracted or manual override
 	
-	// GoFile upload settings
-	EnableGoFileUpload bool // enable automatic upload to GoFile after recording
+	// Multi-host upload settings
+	EnableGoFileUpload bool // enable automatic upload to multiple hosts after recording
+
+	// Optional Supabase integration (upload records + hosted thumbnails). When false, the app will not
+	// store anything in Supabase even if credentials are present.
+	EnableSupabase bool
+	
+	// Upload host API keys
+	TurboViPlayAPIKey   string // TurboViPlay.com API key
+	VoeSXAPIKey         string // VOE.sx API key
+	StreamtapeLogin     string // Streamtape.com login
+	StreamtapeAPIKey    string // Streamtape.com API key
 	
 	// Supabase settings
 	SupabaseURL    string // Supabase project URL

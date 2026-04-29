@@ -1,12 +1,17 @@
 package internal
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
+	"os"
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/HeapOfChaos/goondvr/server"
 )
@@ -178,7 +183,10 @@ func ScrapeChaturbateStreamWithFlareSolverr(ctx context.Context, username string
 
 // GetFlareSolverrResponse gets the full response including HTML content
 func GetFlareSolverrResponse(ctx context.Context, url string) (*FlareSolverrResponse, error) {
-	flaresolverrURL := "http://localhost:8191/v1"
+	flaresolverrURL := os.Getenv("FLARESOLVERR_URL")
+	if flaresolverrURL == "" {
+		flaresolverrURL = "http://localhost:8191/v1"
+	}
 	
 	reqBody := FlareSolverrRequest{
 		Cmd:        "request.get",
@@ -195,14 +203,27 @@ func GetFlareSolverrResponse(ctx context.Context, url string) (*FlareSolverrResp
 		fmt.Printf("[DEBUG] FlareSolverr: requesting %s\n", url)
 	}
 	
-	req := NewReq()
-	body, err := req.PostJSON(ctx, flaresolverrURL, string(jsonData))
+	// Use direct HTTP client with long timeout for FlareSolverr
+	httpReq, err := http.NewRequestWithContext(ctx, "POST", flaresolverrURL, bytes.NewBuffer(jsonData))
 	if err != nil {
-		return nil, fmt.Errorf("post request: %w", err)
+		return nil, fmt.Errorf("create request: %w", err)
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	
+	client := &http.Client{Timeout: 360 * time.Second} // 6 minutes for Cloudflare challenges + queue wait
+	resp, err := client.Do(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("do request: %w", err)
+	}
+	defer resp.Body.Close()
+	
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read body: %w", err)
 	}
 	
 	var fsResp FlareSolverrResponse
-	if err := json.Unmarshal([]byte(body), &fsResp); err != nil {
+	if err := json.Unmarshal(body, &fsResp); err != nil {
 		return nil, fmt.Errorf("unmarshal response: %w", err)
 	}
 	

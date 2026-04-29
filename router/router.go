@@ -110,6 +110,10 @@ func SetupViews(r *gin.Engine) {
 	r.GET("/api/database/stats", GetDatabaseStats)
 	r.GET("/api/database/search", SearchVideos)
 	r.POST("/api/database/backup", BackupDatabase)
+	r.POST("/api/upload/completed", UploadCompletedFiles)
+	
+	// Serve thumbnails
+	r.Static("/thumbnails", "./thumbnails")
 }
 
 // LoadHTMLFromEmbedFS loads specific HTML templates from an embedded filesystem and registers them with Gin.

@@ -101,6 +101,13 @@ type settings struct {
 	NotifyStreamOnline  bool   `json:"notify_stream_online,omitempty"`
 	StripchatPDKey      string `json:"stripchat_pdkey,omitempty"`
 	EnableGoFileUpload  bool   `json:"enable_gofile_upload,omitempty"`
+	EnableSupabase      bool   `json:"enable_supabase,omitempty"`
+	TurboViPlayAPIKey   string `json:"turboviplay_api_key,omitempty"`
+	VoeSXAPIKey         string `json:"voesx_api_key,omitempty"`
+	StreamtapeLogin     string `json:"streamtape_login,omitempty"`
+	StreamtapeAPIKey    string `json:"streamtape_api_key,omitempty"`
+	SupabaseURL         string `json:"supabase_url,omitempty"`
+	SupabaseAPIKey      string `json:"supabase_api_key,omitempty"`
 }
 
 // SaveSettings persists the current cookies and user-agent to disk.
@@ -126,6 +133,13 @@ func SaveSettings() error {
 		NotifyStreamOnline:  server.Config.NotifyStreamOnline,
 		StripchatPDKey:      server.Config.StripchatPDKey,
 		EnableGoFileUpload:  server.Config.EnableGoFileUpload,
+		EnableSupabase:      server.Config.EnableSupabase,
+		TurboViPlayAPIKey:   server.Config.TurboViPlayAPIKey,
+		VoeSXAPIKey:         server.Config.VoeSXAPIKey,
+		StreamtapeLogin:     server.Config.StreamtapeLogin,
+		StreamtapeAPIKey:    server.Config.StreamtapeAPIKey,
+		SupabaseURL:         server.Config.SupabaseURL,
+		SupabaseAPIKey:      server.Config.SupabaseAPIKey,
 	}
 	b, err := json.MarshalIndent(s, "", "  ")
 	if err != nil {
@@ -193,6 +207,13 @@ func LoadSettings() error {
 		server.Config.StripchatPDKey = s.StripchatPDKey
 	}
 	server.Config.EnableGoFileUpload = s.EnableGoFileUpload
+	server.Config.EnableSupabase = s.EnableSupabase
+	server.Config.TurboViPlayAPIKey = s.TurboViPlayAPIKey
+	server.Config.VoeSXAPIKey = s.VoeSXAPIKey
+	server.Config.StreamtapeLogin = s.StreamtapeLogin
+	server.Config.StreamtapeAPIKey = s.StreamtapeAPIKey
+	server.Config.SupabaseURL = s.SupabaseURL
+	server.Config.SupabaseAPIKey = s.SupabaseAPIKey
 	if server.Config.FFmpegEncoder == "" {
 		server.Config.FFmpegEncoder = "libx264"
 	}
@@ -413,6 +434,10 @@ func (m *Manager) LoadConfig() error {
 		}
 		go ch.Resume(i)
 	}
+	
+	// Process any orphaned recordings (interrupted recordings that weren't uploaded)
+	go m.ProcessOrphanedRecordings()
+	
 	return nil
 }
 
@@ -713,5 +738,105 @@ func (m *Manager) diskMonitor() {
 				msg,
 			)
 		}
+	}
+}
+
+// ProcessOrphanedRecordings scans for video files that weren't uploaded and processes them
+func (m *Manager) ProcessOrphanedRecordings() {
+	// Wait a bit for channels to initialize
+	time.Sleep(10 * time.Second)
+	
+	fmt.Println("🔍 Scanning for orphaned recordings...")
+	
+	// Scan all video directories
+	videoDirs := []string{"videos"}
+	
+	// Also check site-specific directories
+	if _, err := os.Stat("videos/stripchat"); err == nil {
+		videoDirs = append(videoDirs, "videos/stripchat")
+	}
+	
+	var orphanedFiles []string
+	videoExtensions := map[string]bool{
+		".mp4": true,
+		".ts":  true,
+		".mkv": true,
+	}
+	
+	for _, dir := range videoDirs {
+		if _, err := os.Stat(dir); os.IsNotExist(err) {
+			continue
+		}
+		
+		err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
+			if err != nil {
+				return nil // Skip errors
+			}
+			
+			// Skip directories and completed folder
+			if info.IsDir() || strings.Contains(path, "completed") {
+				return nil
+			}
+			
+			// Check if it's a video file
+			ext := strings.ToLower(filepath.Ext(path))
+			if !videoExtensions[ext] {
+				return nil
+			}
+			
+			// Skip files being finalized
+			if strings.Contains(path, ".finalizing") {
+				return nil
+			}
+			
+			// Process all video files (no age restriction)
+			orphanedFiles = append(orphanedFiles, path)
+			
+			return nil
+		})
+		
+		if err != nil {
+			fmt.Printf("⚠️  Error scanning %s: %v\n", dir, err)
+		}
+	}
+	
+	if len(orphanedFiles) == 0 {
+		fmt.Println("✅ No orphaned recordings found")
+		return
+	}
+	
+	fmt.Printf("📦 Found %d orphaned recording(s), processing...\n", len(orphanedFiles))
+	
+	// Process each orphaned file
+	for _, filePath := range orphanedFiles {
+		fmt.Printf("📤 Processing orphaned file: %s\n", filepath.Base(filePath))
+		
+		// Extract username from filename by matching against known channels
+		filename := filepath.Base(filePath)
+		var targetChannel *channel.Channel
+		var matchedUsername string
+		
+		// Try to match filename against all channel usernames
+		m.Channels.Range(func(key, value interface{}) bool {
+			ch := value.(*channel.Channel)
+			username := ch.Config.Username
+			// Check if filename starts with username followed by underscore and date pattern
+			if strings.HasPrefix(filename, username+"_") {
+				targetChannel = ch
+				matchedUsername = username
+				return false // Stop iteration
+			}
+			return true
+		})
+		
+		if targetChannel == nil {
+			fmt.Printf("⚠️  No channel found for file: %s, skipping\n", filename)
+			continue
+		}
+		
+		fmt.Printf("✓ Matched file to channel: %s\n", matchedUsername)
+		
+		// Process the file using the channel's finalization logic
+		go targetChannel.ProcessOrphanedFile(filePath)
 	}
 }

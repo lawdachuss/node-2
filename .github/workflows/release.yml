@@ -424,7 +424,8 @@ jobs:
               CURR=0
               FCOUNT=0
               # Only check completed files (not being actively written)
-              for f in videos/completed/*.ts videos/completed/*.mp4; do
+              # Check both the actively-written file in videos/ AND completed files
+              for f in videos/*.ts videos/completed/*.ts videos/completed/*.mp4; do
                 [[ -f "$f" ]] || continue
                 FCOUNT=$((FCOUNT + 1))
                 FSIZE=$(stat -c%s "$f" 2>/dev/null || echo 0)
@@ -504,10 +505,10 @@ jobs:
 
           # ── Recording loop ────────────────────────────────────────────
           RECORDED=false
-          OFFLINE_COUNT=0
           ATTEMPT=0
-          MAX_OFFLINE=5
-          MAX_ATTEMPTS=20   # ~20 min at 1-min interval before giving up
+          # Stop polling with enough runway for convert + upload + cleanup.
+          # Formula: 330-min job cap − MAX_DURATION − 60-min upload buffer.
+          POLL_DEADLINE=$(( $(date +%s) + (330 - MAX_DURATION - 60) * 60 ))
 
           ARGS=(
             -u "$USERNAME"
@@ -556,44 +557,39 @@ jobs:
             VCOUNT=$(find videos -type f \( -name "*.ts" -o -name "*.mp4" \) 2>/dev/null | wc -l)
             VSIZE=$(du -sb videos 2>/dev/null | cut -f1 || echo 0)
 
-            # File appeared or grew → stream is/was live
+            # ── Evaluate what goondvr produced ────────────────────────
             if [[ "$VCOUNT" -gt "$VCOUNT_BEFORE" ]] || [[ "$VSIZE" -gt "$VSIZE_BEFORE" ]]; then
+              # A chunk was recorded — upload immediately so disk stays clear.
+              # The restart job will trigger a fresh run for the next chunk.
               RECORDED=true
-              ATTEMPT=0          # reset: treat it as "fresh" now
-              OFFLINE_COUNT=0
-            fi
-
-            # run_once: bail immediately after the first chunk
-            if [[ "${{ inputs.run_once || 'false' }}" == "true" && "$RECORDED" == "true" ]]; then
-              echo "🛑 run_once — stopping after first recording"
+              echo "⏱️ Chunk recorded ($VCOUNT file(s)) — moving to upload"
               echo "::endgroup::"
               break
             fi
 
-            # Chunk timed out (RC=124) → stream still live, break to process and restart
+            # Monitor killed goondvr (disk critical / stall) — bail out and
+            # upload whatever partial files may exist.
+            if [[ "$MONITOR_KILLED" == "1" ]]; then
+              echo "🛑 Monitor stopped recording — exiting loop"
+              echo "::endgroup::"
+              break
+            fi
+
+            # RC=124 means the external timeout fired (MAX_DURATION+2 min) but
+            # goondvr produced no files — stream was offline the whole window.
             if [[ "$RC" -eq 124 ]]; then
-              echo "⏱️ Chunk complete — moving to upload (workflow will restart)"
+              echo "⚠️  Timeout with no recording — stream was offline during this window"
+            fi
+
+            # Stream still offline — keep polling until deadline.
+            NOW=$(date +%s)
+            if [[ "$NOW" -ge "$POLL_DEADLINE" ]]; then
+              echo "⏸️ Stream never came online within the workflow run — skipping"
               echo "::endgroup::"
               break
             fi
-
-            # goondvr exited early
-            if [[ "$RECORDED" == "true" ]]; then
-              OFFLINE_COUNT=$(( OFFLINE_COUNT + 1 ))
-              echo "Stream offline? ($OFFLINE_COUNT/$MAX_OFFLINE)"
-              if [[ "$OFFLINE_COUNT" -ge "$MAX_OFFLINE" ]]; then
-                echo "🎬 Stream ended — moving to upload"
-                echo "::endgroup::"
-                break
-              fi
-            else
-              if [[ "$ATTEMPT" -ge "$MAX_ATTEMPTS" ]]; then
-                echo "⏸️ Stream never came online after $MAX_ATTEMPTS attempts — skipping"
-                echo "::endgroup::"
-                break
-              fi
-              echo "Waiting for stream… ($ATTEMPT/$MAX_ATTEMPTS)"
-            fi
+            REMAINING=$(( (POLL_DEADLINE - NOW) / 60 ))
+            echo "Stream offline — waiting… (attempt #$ATTEMPT, ~${REMAINING} min left in run)"
 
             echo "::endgroup::"
             sleep $(( INTERVAL * 60 ))
@@ -838,7 +834,7 @@ jobs:
             | jq -r '.data.servers[0].name // "store1"' 2>/dev/null || echo "store1")
           echo "GoFile server: $SERVER"
 
-          RECORDS="[]"
+          # (RECORDS variable removed — was dead code, never read)
 
           find videos/mp4 -type f \( -name "*.mp4" -o -name "*.ts" \) | sort | while read -r FILE; do
             FNAME=$(basename "$FILE")
@@ -1277,7 +1273,7 @@ jobs:
                   workflow_id: 'release.yml',
                   ref:         branch,
                   inputs: {
-                    max_duration: "${{ inputs.max_duration || '45' }}",
+                    max_duration: "${{ inputs.max_duration || '30' }}",
                     resolution:   "${{ inputs.resolution   || '9999' }}",
                     framerate:    "${{ inputs.framerate    || '60' }}",
                     interval:     "${{ inputs.interval     || '1' }}",

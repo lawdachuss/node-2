@@ -3,6 +3,7 @@ CREATE TABLE IF NOT EXISTS gofile_uploads (
     id SERIAL PRIMARY KEY,
     streamer_name TEXT NOT NULL,
     gofile_link TEXT NOT NULL,
+    thumbnail_link TEXT,
     upload_date TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 

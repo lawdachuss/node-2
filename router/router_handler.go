@@ -2,7 +2,12 @@ package router
 
 import (
 	"fmt"
+	"io"
+	"log"
 	"net/http"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -10,6 +15,8 @@ import (
 	"github.com/HeapOfChaos/goondvr/internal"
 	"github.com/HeapOfChaos/goondvr/manager"
 	"github.com/HeapOfChaos/goondvr/server"
+	"github.com/HeapOfChaos/goondvr/supabase"
+	"github.com/HeapOfChaos/goondvr/uploader"
 	"github.com/gin-gonic/gin"
 )
 
@@ -168,6 +175,11 @@ type UpdateConfigRequest struct {
 	NotifyCooldownHours int    `form:"notify_cooldown_hours"`
 	NotifyStreamOnline  bool   `form:"notify_stream_online"`
 	EnableGoFileUpload  bool   `form:"enable_gofile_upload"`
+	EnableSupabase      bool   `form:"enable_supabase"`
+	TurboViPlayAPIKey   string `form:"turboviplay_api_key"`
+	VoeSXAPIKey         string `form:"voesx_api_key"`
+	StreamtapeLogin     string `form:"streamtape_login"`
+	StreamtapeAPIKey    string `form:"streamtape_api_key"`
 }
 
 // UpdateConfig updates the server configuration.
@@ -211,6 +223,11 @@ func UpdateConfig(c *gin.Context) {
 	server.Config.NotifyCooldownHours = req.NotifyCooldownHours
 	server.Config.NotifyStreamOnline = req.NotifyStreamOnline
 	server.Config.EnableGoFileUpload = req.EnableGoFileUpload
+	server.Config.EnableSupabase = req.EnableSupabase
+	server.Config.TurboViPlayAPIKey = req.TurboViPlayAPIKey
+	server.Config.VoeSXAPIKey = req.VoeSXAPIKey
+	server.Config.StreamtapeLogin = req.StreamtapeLogin
+	server.Config.StreamtapeAPIKey = req.StreamtapeAPIKey
 
 	if err := manager.SaveSettings(); err != nil {
 		c.AbortWithError(http.StatusInternalServerError, fmt.Errorf("save settings: %w", err))
@@ -220,43 +237,266 @@ func UpdateConfig(c *gin.Context) {
 }
 
 // GetVideos returns all uploaded video records as JSON
-// DISABLED: Database package removed for GitHub Actions compatibility
 func GetVideos(c *gin.Context) {
-	c.JSON(http.StatusOK, gin.H{"error": "database functionality disabled"})
+	if !server.Config.EnableSupabase || server.Config.SupabaseURL == "" || server.Config.SupabaseAPIKey == "" {
+		c.JSON(http.StatusOK, gin.H{"error": "Supabase is disabled", "videos": []interface{}{}})
+		return
+	}
+
+	records, err := server.SupabaseClient.GetAllUploads()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error(), "videos": []interface{}{}})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"videos": records, "count": len(records)})
 }
 
 // GetVideosByUsername returns all uploaded video records for a specific username
-// DISABLED: Database package removed for GitHub Actions compatibility
 func GetVideosByUsername(c *gin.Context) {
-	c.JSON(http.StatusOK, gin.H{"error": "database functionality disabled"})
+	if !server.Config.EnableSupabase || server.Config.SupabaseURL == "" || server.Config.SupabaseAPIKey == "" {
+		c.JSON(http.StatusOK, gin.H{"error": "Supabase is disabled", "videos": []interface{}{}})
+		return
+	}
+
+	username := c.Param("username")
+	records, err := server.SupabaseClient.GetUploadsByStreamer(username)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error(), "videos": []interface{}{}})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"videos": records, "count": len(records), "username": username})
 }
 
 // GetVideosBySite returns all uploaded video records for a specific site
-// DISABLED: Database package removed for GitHub Actions compatibility
 func GetVideosBySite(c *gin.Context) {
-	c.JSON(http.StatusOK, gin.H{"error": "database functionality disabled"})
+	c.JSON(http.StatusOK, gin.H{"error": "not implemented", "videos": []interface{}{}})
 }
 
 // GetVideoByID returns a specific video record by ID
-// DISABLED: Database package removed for GitHub Actions compatibility
 func GetVideoByID(c *gin.Context) {
-	c.JSON(http.StatusNotFound, gin.H{"error": "database functionality disabled"})
+	c.JSON(http.StatusNotFound, gin.H{"error": "not implemented"})
 }
 
 // GetDatabaseStats returns database statistics
-// DISABLED: Database package removed for GitHub Actions compatibility
 func GetDatabaseStats(c *gin.Context) {
-	c.JSON(http.StatusOK, gin.H{"error": "database functionality disabled"})
+	if !server.Config.EnableSupabase || server.Config.SupabaseURL == "" || server.Config.SupabaseAPIKey == "" {
+		c.JSON(http.StatusOK, gin.H{"error": "Supabase is disabled"})
+		return
+	}
+
+	records, err := server.SupabaseClient.GetAllUploads()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Count by streamer
+	streamerCounts := make(map[string]int)
+	for _, record := range records {
+		streamerCounts[record.StreamerName]++
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"total_videos":    len(records),
+		"total_streamers": len(streamerCounts),
+		"by_streamer":     streamerCounts,
+	})
 }
 
 // SearchVideos searches videos by query string
-// DISABLED: Database package removed for GitHub Actions compatibility
 func SearchVideos(c *gin.Context) {
-	c.JSON(http.StatusOK, gin.H{"error": "database functionality disabled"})
+	c.JSON(http.StatusOK, gin.H{"error": "not implemented", "videos": []interface{}{}})
 }
 
 // BackupDatabase creates a backup of the database
-// DISABLED: Database package removed for GitHub Actions compatibility
 func BackupDatabase(c *gin.Context) {
-	c.JSON(http.StatusOK, gin.H{"message": "database functionality disabled"})
+	c.JSON(http.StatusOK, gin.H{"message": "not implemented"})
+}
+
+// UploadCompletedFiles uploads all completed video files to GoFile
+func UploadCompletedFiles(c *gin.Context) {
+	if !server.Config.EnableGoFileUpload {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "GoFile upload is not enabled"})
+		return
+	}
+
+	// Start upload in background
+	go uploadCompletedFilesAsync()
+
+	c.JSON(http.StatusOK, gin.H{"message": "Upload started in background"})
+}
+
+
+// uploadCompletedFilesAsync uploads all completed video files to GoFile in the background
+func uploadCompletedFilesAsync() {
+	log.Println("Starting upload of completed files...")
+	
+	completedDir := "videos/completed"
+	if server.Config.CompletedDir != "" {
+		completedDir = server.Config.CompletedDir
+	}
+
+	// Check if directory exists
+	if _, err := os.Stat(completedDir); os.IsNotExist(err) {
+		log.Printf("Completed directory does not exist: %s", completedDir)
+		return
+	}
+
+	gofileUploader := uploader.NewGoFileUploader()
+	var supabaseClient *supabase.Client
+	if server.Config.EnableSupabase && server.Config.SupabaseURL != "" && server.Config.SupabaseAPIKey != "" {
+		supabaseClient = supabase.NewClient(server.Config.SupabaseURL, server.Config.SupabaseAPIKey)
+	}
+	
+	uploadCount := 0
+	errorCount := 0
+
+	// Walk through completed directory
+	err := filepath.Walk(completedDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return nil // Skip files we can't access
+		}
+
+		if info.IsDir() {
+			return nil // Skip directories
+		}
+
+		// Only process video files
+		ext := strings.ToLower(filepath.Ext(path))
+		if ext != ".mp4" && ext != ".mkv" && ext != ".ts" {
+			return nil
+		}
+
+		log.Printf("Uploading: %s (%d MB)", filepath.Base(path), info.Size()/(1024*1024))
+
+		// Upload to GoFile
+		downloadLink, err := gofileUploader.Upload(path)
+		if err != nil {
+			log.Printf("ERROR: Upload failed for %s: %v", filepath.Base(path), err)
+			errorCount++
+			return nil
+		}
+
+		log.Printf("SUCCESS: Uploaded %s -> %s", filepath.Base(path), downloadLink)
+
+		// Generate and save thumbnail locally
+		var thumbnailPath string
+		log.Printf("Generating thumbnail for %s...", filepath.Base(path))
+		tempThumbPath, err := generateThumbnailForUpload(path)
+		if err != nil {
+			log.Printf("WARNING: Thumbnail generation failed for %s: %v", filepath.Base(path), err)
+		} else {
+			// Save to thumbnails directory
+			thumbnailDir := "thumbnails"
+			os.MkdirAll(thumbnailDir, 0755)
+			
+			// Extract username from filename
+			filename := filepath.Base(path)
+			username := strings.Split(filename, "_")[0]
+			thumbnailFilename := fmt.Sprintf("%s_%d.jpg", username, time.Now().Unix())
+			thumbnailPath = filepath.Join(thumbnailDir, thumbnailFilename)
+			
+			if err := os.Rename(tempThumbPath, thumbnailPath); err != nil {
+				// Try copy if rename fails
+				srcFile, _ := os.Open(tempThumbPath)
+				if srcFile != nil {
+					dstFile, _ := os.Create(thumbnailPath)
+					if dstFile != nil {
+						io.Copy(dstFile, srcFile)
+						dstFile.Close()
+					}
+					srcFile.Close()
+				}
+				os.Remove(tempThumbPath)
+			}
+			log.Printf("SUCCESS: Thumbnail saved -> %s", thumbnailPath)
+		}
+
+		// Extract username from filename (assumes format: username_date_time.ext)
+		filename := filepath.Base(path)
+		username := strings.Split(filename, "_")[0]
+
+		// Store in Supabase
+		if supabaseClient != nil {
+			thumbnailLink := thumbnailPath
+			if thumbnailPath != "" {
+				if link, err := supabaseClient.UploadThumbnail("thumbnails", filepath.Base(thumbnailPath), thumbnailPath, "image/jpeg"); err != nil {
+					log.Printf("WARNING: Thumbnail upload failed (keeping local) for %s: %v", filename, err)
+				} else {
+					thumbnailLink = link
+					log.Printf("SUCCESS: Thumbnail uploaded -> %s", thumbnailLink)
+				}
+			}
+			if err := supabaseClient.InsertUploadRecord(username, downloadLink, thumbnailLink); err != nil {
+				log.Printf("ERROR: Failed to store in Supabase for %s: %v", filename, err)
+			} else {
+				log.Printf("SUCCESS: Stored in Supabase for %s", filename)
+			}
+		}
+
+		// Delete local file after successful upload
+		if err := os.Remove(path); err != nil {
+			log.Printf("ERROR: Failed to delete %s: %v", filepath.Base(path), err)
+		} else {
+			log.Printf("SUCCESS: Deleted local file %s", filepath.Base(path))
+		}
+
+		uploadCount++
+		return nil
+	})
+
+	if err != nil {
+		log.Printf("ERROR: Failed to walk completed directory: %v", err)
+	}
+
+	log.Printf("Upload complete: %d successful, %d failed", uploadCount, errorCount)
+}
+
+
+// generateThumbnailForUpload creates a thumbnail from a video file
+func generateThumbnailForUpload(videoPath string) (string, error) {
+	thumbnailPath := strings.TrimSuffix(videoPath, filepath.Ext(videoPath)) + "_thumb.jpg"
+	_ = os.Remove(thumbnailPath)
+
+	args := []string{
+		"-y",
+		"-ss", "2",
+		"-i", videoPath,
+		"-vframes", "1",
+		"-vf", "scale=640:-2",
+		"-q:v", "2",
+		thumbnailPath,
+	}
+
+	cmd := exec.Command("ffmpeg", args...)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		// Try without seeking for short videos
+		args = []string{
+			"-y",
+			"-i", videoPath,
+			"-vframes", "1",
+			"-vf", "scale=640:-2",
+			"-q:v", "2",
+			thumbnailPath,
+		}
+		cmd = exec.Command("ffmpeg", args...)
+		output, err = cmd.CombinedOutput()
+		if err != nil {
+			return "", fmt.Errorf("ffmpeg failed: %s: %w", string(output), err)
+		}
+	}
+
+	fileInfo, err := os.Stat(thumbnailPath)
+	if os.IsNotExist(err) {
+		return "", fmt.Errorf("thumbnail not created")
+	}
+	if fileInfo.Size() < 1000 {
+		os.Remove(thumbnailPath)
+		return "", fmt.Errorf("thumbnail corrupted")
+	}
+
+	return thumbnailPath, nil
 }
