@@ -226,8 +226,10 @@ func (ch *Channel) Stop() {
 // to maintain a steady flow without overwhelming the FlareSolverr queue.
 func (ch *Channel) Resume(startSeq int) {
 	go func() {
-		// No delay - with 5 FlareSolverr instances and round-robin load balancing,
-		// we can handle all channels starting simultaneously (~6 channels per instance)
+		// Small 2-second stagger to prevent overwhelming FlareSolverr
+		// 29 channels × 2 seconds = 58 seconds total startup time
+		// This prevents queue buildup while still being much faster than 20s stagger
+		<-time.After(time.Duration(startSeq*2) * time.Second)
 		runID, ok := ch.requestMonitorStart()
 		if !ok {
 			return
