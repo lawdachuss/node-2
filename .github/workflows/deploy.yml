@@ -224,28 +224,7 @@ jobs:
             if [ ! -f conf/settings.json ]; then
               echo "⚠️  conf/settings.json not found! Creating with defaults..."
               mkdir -p conf
-              cat > conf/settings.json <<'SETTINGS'
-{
-  "cookies": "",
-  "user_agent": "",
-  "enable_gofile_upload": true,
-  "enable_supabase": true,
-  "turboviplay_api_key": "",
-  "voesx_api_key": "",
-  "streamtape_login": "",
-  "streamtape_api_key": "",
-  "supabase_url": "",
-  "supabase_api_key": "",
-  "discord_webhook_url": "",
-  "finalize_mode": "remux",
-  "ffmpeg_container": "mp4",
-  "ffmpeg_encoder": "libx264",
-  "ffmpeg_quality": 18,
-  "ffmpeg_preset": "slow",
-  "disk_warning_percent": 80,
-  "disk_critical_percent": 90
-}
-SETTINGS
+              echo '{"cookies":"","user_agent":"","enable_gofile_upload":true,"enable_supabase":true,"turboviplay_api_key":"","voesx_api_key":"","streamtape_login":"","streamtape_api_key":"","supabase_url":"","supabase_api_key":"","discord_webhook_url":"","finalize_mode":"remux","ffmpeg_container":"mp4","ffmpeg_encoder":"libx264","ffmpeg_quality":18,"ffmpeg_preset":"slow","disk_warning_percent":80,"disk_critical_percent":90}' > conf/settings.json
               echo "✅ Created conf/settings.json"
               sudo docker restart goondvr
               sleep 5
