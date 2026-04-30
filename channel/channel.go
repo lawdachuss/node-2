@@ -226,10 +226,10 @@ func (ch *Channel) Stop() {
 // to maintain a steady flow without overwhelming the FlareSolverr queue.
 func (ch *Channel) Resume(startSeq int) {
 	go func() {
-		// Small 2-second stagger to prevent overwhelming FlareSolverr
-		// 29 channels × 2 seconds = 58 seconds total startup time
-		// This prevents queue buildup while still being much faster than 20s stagger
-		<-time.After(time.Duration(startSeq*2) * time.Second)
+		// 5-second stagger to avoid triggering Cloudflare bot detection
+		// 29 channels × 5 seconds = 2.5 minutes total startup time
+		// This spreads out requests to appear more natural to Cloudflare
+		<-time.After(time.Duration(startSeq*5) * time.Second)
 		runID, ok := ch.requestMonitorStart()
 		if !ok {
 			return
