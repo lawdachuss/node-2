@@ -25,16 +25,6 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
       
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: '1.21'
-      
-      - name: Install FFmpeg
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y ffmpeg jq
-      
       - name: Create required directories
         run: |
           mkdir -p videos/completed
@@ -58,8 +48,13 @@ jobs:
           EOF
           fi
       
-      - name: Build application
-        run: go build -o goondvr .
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      
+      - name: Build Docker image
+        run: |
+          echo "🐳 Building Docker image..."
+          docker build -t goondvr:latest .
       
       - name: Install Cloudflare Tunnel
         run: |
@@ -72,31 +67,29 @@ jobs:
           # Verify installation
           cloudflared --version
       
-      - name: Start application in background
-        env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_API_KEY: ${{ secrets.SUPABASE_API_KEY }}
-          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
-          TURBOVIPLAY_API_KEY: ${{ secrets.TURBOVIPLAY_API_KEY }}
-          VOESX_API_KEY: ${{ secrets.VOESX_API_KEY }}
-          STREAMTAPE_LOGIN: ${{ secrets.STREAMTAPE_LOGIN }}
-          STREAMTAPE_API_KEY: ${{ secrets.STREAMTAPE_API_KEY }}
-          IMGBB_API_KEY: ${{ secrets.IMGBB_API_KEY }}
+      - name: Start Docker container
         run: |
-          echo "🚀 Starting recorder at $(date)"
-          ./goondvr --port 8080 --enable-gofile-upload > recording.log 2>&1 &
-          APP_PID=$!
-          echo $APP_PID > app.pid
+          echo "🚀 Starting Docker container at $(date)"
           
-          # Wait for app to start
+          docker run -d \
+            --name goondvr \
+            -p 8080:8080 \
+            -v $(pwd)/videos:/usr/src/app/videos \
+            -v $(pwd)/database:/usr/src/app/database \
+            -v $(pwd)/conf:/usr/src/app/conf \
+            -v $(pwd)/settings.json:/usr/src/app/settings.json \
+            goondvr:latest --port 8080 --enable-gofile-upload
+          
+          # Wait for container to start
           sleep 5
           
-          # Check if app is running
-          if ps -p $APP_PID > /dev/null; then
-            echo "✅ Application started successfully (PID: $APP_PID)"
+          # Check if container is running
+          if docker ps | grep -q goondvr; then
+            echo "✅ Docker container started successfully"
+            docker logs goondvr
           else
-            echo "❌ Application failed to start"
-            cat recording.log
+            echo "❌ Docker container failed to start"
+            docker logs goondvr
             exit 1
           fi
       
@@ -188,15 +181,12 @@ jobs:
           while [ $(date +%s) -lt $END_TIME ]; do
             CURRENT_TIME=$(date +%s)
             
-            # Check if app is still running
-            if [ -f app.pid ]; then
-              APP_PID=$(cat app.pid)
-              if ! ps -p $APP_PID > /dev/null; then
-                echo "⚠️ Application stopped unexpectedly!"
-                echo "Last 50 lines of log:"
-                tail -50 recording.log
-                break
-              fi
+            # Check if container is still running
+            if ! docker ps | grep -q goondvr; then
+              echo "⚠️ Docker container stopped unexpectedly!"
+              echo "Last 50 lines of log:"
+              docker logs --tail 50 goondvr
+              break
             fi
             
             # Cleanup uploaded videos every 10 minutes to save disk space
@@ -240,10 +230,8 @@ jobs:
           echo "✅ 5-hour session completed at $(date)"
           echo "🛑 Stopping services..."
           
-          # Stop application
-          if [ -f app.pid ]; then
-            kill $(cat app.pid) 2>/dev/null || true
-          fi
+          # Stop Docker container
+          docker stop goondvr || true
           
           # Stop tunnel
           if [ -f tunnel.pid ]; then
@@ -263,8 +251,8 @@ jobs:
       - name: Show session logs
         if: always()
         run: |
-          echo "📋 Last 100 lines of recording log:"
-          tail -100 recording.log || echo "No logs found"
+          echo "📋 Last 100 lines of Docker logs:"
+          docker logs --tail 100 goondvr 2>&1 || echo "No logs found"
       
       - name: Upload recordings (if any)
         if: always()
@@ -275,7 +263,6 @@ jobs:
             videos/**/*.mp4
             videos/**/*.ts
             database/**/*.json
-            recording.log
             tunnel.log
           retention-days: 1
           if-no-files-found: ignore
@@ -301,6 +288,9 @@ jobs:
       - name: Cleanup
         if: always()
         run: |
+          # Remove Docker container
+          docker rm -f goondvr 2>/dev/null || true
+          
           echo ""
           echo "✅ Workflow completed"
           echo "🔄 Next run will start automatically in ~5 hours"
