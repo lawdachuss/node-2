@@ -104,6 +104,31 @@ func ScrapeChaturbateStream(ctx context.Context, username string) (string, strin
 func ScrapeChaturbateStreamWithFlareSolverr(ctx context.Context, username string) (string, string, error) {
 	pageURL := fmt.Sprintf("%s%s/", server.Config.Domain, username)
 	
+	// First, check if FlareSolverr is accessible
+	flaresolverrURL := getFlareSolverrURL()
+	if server.Config.Debug {
+		fmt.Printf("[DEBUG] Testing FlareSolverr connectivity at %s\n", flaresolverrURL)
+	}
+	
+	// Quick health check with 5-second timeout
+	healthCtx, healthCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	healthReq, _ := http.NewRequestWithContext(healthCtx, "GET", flaresolverrURL, nil)
+	healthClient := &http.Client{Timeout: 5 * time.Second}
+	healthResp, healthErr := healthClient.Do(healthReq)
+	healthCancel()
+	
+	if healthErr != nil {
+		if server.Config.Debug {
+			fmt.Printf("[DEBUG] FlareSolverr health check failed: %v\n", healthErr)
+		}
+		return "", "", fmt.Errorf("flaresolverr not accessible: %w", healthErr)
+	}
+	healthResp.Body.Close()
+	
+	if server.Config.Debug {
+		fmt.Printf("[DEBUG] FlareSolverr health check passed (HTTP %d)\n", healthResp.StatusCode)
+	}
+	
 	resp, err := GetFlareSolverrResponse(ctx, pageURL)
 	if err != nil {
 		return "", "", fmt.Errorf("flaresolverr failed: %w", err)
@@ -198,7 +223,7 @@ func GetFlareSolverrResponse(ctx context.Context, url string) (*FlareSolverrResp
 	}
 	
 	if server.Config.Debug {
-		fmt.Printf("[DEBUG] FlareSolverr: requesting %s\n", url)
+		fmt.Printf("[DEBUG] FlareSolverr: requesting %s (this may take 60-180 seconds for Cloudflare 2026 challenges)\n", url)
 	}
 	
 	// Use direct HTTP client with long timeout for FlareSolverr
@@ -208,9 +233,41 @@ func GetFlareSolverrResponse(ctx context.Context, url string) (*FlareSolverrResp
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
 	
+	// Start a progress indicator in debug mode
+	done := make(chan bool)
+	if server.Config.Debug {
+		go func() {
+			ticker := time.NewTicker(15 * time.Second)
+			defer ticker.Stop()
+			elapsed := 0
+			for {
+				select {
+				case <-ticker.C:
+					elapsed += 15
+					fmt.Printf("[DEBUG] FlareSolverr still working... (%ds elapsed)\n", elapsed)
+				case <-done:
+					return
+				}
+			}
+		}()
+	}
+	
 	client := &http.Client{Timeout: 360 * time.Second} // 6 minutes for Cloudflare challenges + queue wait
 	resp, err := client.Do(httpReq)
+	
+	// Stop progress indicator
+	if server.Config.Debug {
+		close(done)
+	}
+	
 	if err != nil {
+		// Provide more specific error messages
+		if strings.Contains(err.Error(), "timeout") || strings.Contains(err.Error(), "deadline exceeded") {
+			return nil, fmt.Errorf("byparr timeout after 360s (cloudflare 2026 is very aggressive - consider residential proxies): %w", err)
+		}
+		if strings.Contains(err.Error(), "connection refused") {
+			return nil, fmt.Errorf("byparr not accessible at %s (is it running?): %w", flaresolverrURL, err)
+		}
 		return nil, fmt.Errorf("do request: %w", err)
 	}
 	defer resp.Body.Close()

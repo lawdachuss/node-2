@@ -156,6 +156,13 @@ func GetFreshCookies(ctx context.Context, url string) (string, string, error) {
 	client = &http.Client{Timeout: 360 * time.Second} // 6 minutes for Cloudflare challenges + queue wait
 	resp, err = client.Do(req)
 	if err != nil {
+		// Check if it's a timeout or connection error
+		if strings.Contains(err.Error(), "timeout") || strings.Contains(err.Error(), "deadline exceeded") {
+			return "", "", fmt.Errorf("byparr timeout after 360s (cloudflare 2026 challenges are very aggressive): %w", err)
+		}
+		if strings.Contains(err.Error(), "connection refused") || strings.Contains(err.Error(), "no such host") {
+			return "", "", fmt.Errorf("byparr not accessible (is it running?): %w", err)
+		}
 		return "", "", fmt.Errorf("byparr request failed: %w", err)
 	}
 	defer resp.Body.Close()

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/url"
+	"os"
 	"sort"
 	"strconv"
 	"strings"
@@ -110,6 +111,16 @@ func FetchStream(ctx context.Context, client *internal.Req, username string) (*S
 				fmt.Printf("[DEBUG] [%s] POST API blocked by Cloudflare, trying FlareSolverr fallback...\n", username)
 			}
 			
+			// Check if FLARESOLVERR_URL is configured
+			flaresolverrURL := os.Getenv("FLARESOLVERR_URL")
+			if flaresolverrURL == "" {
+				flaresolverrURL = "http://localhost:8191/v1"
+			}
+			
+			if server.Config.Debug {
+				fmt.Printf("[DEBUG] [%s] FlareSolverr URL: %s\n", username, flaresolverrURL)
+			}
+			
 			// Try FlareSolverr with extended timeout to handle Cloudflare challenges
 			// Match the BROWSER_TIMEOUT (240s) + 10s buffer for network overhead
 			attemptCtx, cancel := context.WithTimeout(ctx, 250*time.Second)
@@ -119,6 +130,13 @@ func FetchStream(ctx context.Context, client *internal.Req, username string) (*S
 			if scrapeErr != nil {
 				if server.Config.Debug {
 					fmt.Printf("[DEBUG] [%s] FlareSolverr also failed: %v\n", username, scrapeErr)
+				}
+				// Provide helpful error message
+				if strings.Contains(scrapeErr.Error(), "timeout") {
+					return nil, fmt.Errorf("both POST API and FlareSolverr timed out (Cloudflare 2026 is very aggressive - consider using residential proxies or manual cookies): %w", err)
+				}
+				if strings.Contains(scrapeErr.Error(), "not accessible") || strings.Contains(scrapeErr.Error(), "connection refused") {
+					return nil, fmt.Errorf("POST API blocked by Cloudflare and FlareSolverr is not accessible at %s (check if Byparr container is running): %w", flaresolverrURL, err)
 				}
 				return nil, fmt.Errorf("both POST API and FlareSolverr blocked: %w", err)
 			}
