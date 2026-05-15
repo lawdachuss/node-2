@@ -623,18 +623,17 @@ jobs:
         run: |
           echo "🔍 Checking for pending workflow runs..."
           
-          # Check if there are already queued or in-progress runs
-          # Note: gh CLI doesn't support comma-separated status values, so we check each separately
-          QUEUED_RUNS=$(gh run list --workflow="24/7 Recorder" --status=queued --json databaseId --jq 'length')
-          IN_PROGRESS_RUNS=$(gh run list --workflow="24/7 Recorder" --status=in_progress --json databaseId --jq 'length')
-          PENDING_RUNS=$((QUEUED_RUNS + IN_PROGRESS_RUNS))
+          CURRENT_RUN_ID=${{ github.run_id }}
           
-          echo "Found $PENDING_RUNS pending/running workflow(s) (queued: $QUEUED_RUNS, in_progress: $IN_PROGRESS_RUNS)"
+          PENDING_RUNS=$(gh run list --workflow="24/7 Recorder" --status=queued,in_progress \
+            --json databaseId --jq "[.[] | select(.databaseId != $CURRENT_RUN_ID) | .databaseId] | length")
+          
+          echo "Found $PENDING_RUNS pending runs (excluding current: $CURRENT_RUN_ID)"
           
           if [ "$PENDING_RUNS" -gt 0 ]; then
-            echo "✅ Next run already queued or running, skipping trigger"
+            echo "✅ Next run already queued/running, skipping trigger"
           else
-            echo "🔁 No pending runs found, triggering next run..."
+            echo "🔁 No other pending runs, triggering next run..."
             gh workflow run "${{ github.workflow }}" --repo "${{ github.repository }}"
             echo "✅ Next run queued"
           fi
