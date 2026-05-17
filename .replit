@@ -1,4 +1,4 @@
-modules = ["go-1.21", "web", "python-3.12", "bash", "nodejs-20"]
+modules = ["go-1.21", "web", "python-3.12", "bash", "nodejs-20", "postgresql-16"]
 [agent]
 expertMode = true
 stack = "BEST_EFFORT_FALLBACK"
@@ -6,6 +6,7 @@ integrations = ["javascript_database:1.0.0"]
 
 [nix]
 channel = "stable-25_05"
+packages = ["gitFull", "playwright-driver"]
 
 [workflows]
 runButton = "Project"
