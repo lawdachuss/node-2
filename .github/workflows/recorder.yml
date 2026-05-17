@@ -117,20 +117,17 @@ jobs:
         run: |
           set -euo pipefail
 
-          # Start remaining services (recorder, uploader, cookie-refresher)
-          docker compose up -d --build chaturbate-dvr uploader cookie-refresher
+          # Start remaining services (recorder, uploader)
+          docker compose up -d --build chaturbate-dvr uploader
 
           echo "Running services:"
           docker compose ps
 
-          echo "Waiting for cookie-refresher to push initial cookies..."
+          echo "Waiting for cookie-refresher (built-in) to push initial cookies..."
           for attempt in {1..90}; do
-            if docker compose logs cookie-refresher 2>/dev/null | grep -q 'Pushed to chaturbate-dvr (ok)'; then
+            if docker compose logs chaturbate-dvr 2>/dev/null | grep -q 'refreshed and saved'; then
               echo "Initial Cloudflare cookies applied"
               break
-            fi
-            if docker compose logs cookie-refresher 2>/dev/null | grep -q 'Failed to push cookies'; then
-              echo "cookie-refresher could not push cookies yet (attempt $attempt/90)"
             fi
             sleep 5
           done
