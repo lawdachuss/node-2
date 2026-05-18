@@ -181,8 +181,8 @@ jobs:
             fi
             if (( attempt % 10 == 1 )); then
               elapsed=$(( (attempt - 1) * 3 ))
-              byparr_status="$(curl -sS --max-time 3 http://localhost:8191/backend-health 2>/dev/null || echo 'unreachable')"
-              echo "  [${elapsed}s] waiting (byparr: ${byparr_status})..."
+              last_log="$(docker compose logs --tail=3 cookie-refresher 2>/dev/null | grep -oP '\[COOKIE\].*' | tail -1 || echo 'no log yet')"
+              echo "  [${elapsed}s] cookie-refresher: ${last_log}"
             fi
             sleep 3
           done

@@ -10,11 +10,39 @@ done
 
 echo '[COOKIE] Byparr load balancer is up'
 
-while true; do
-  echo "[COOKIE] Getting cf_clearance from Byparr... ($(date -u +%H:%M:%S))"
-  RESPONSE=$(curl -sS --fail --max-time 90 -X POST http://byparr-lb/v1 \
+# Wait for Byparr backend to respond before attempting API calls.
+# We probe the /v1 endpoint with a lightweight request because the nginx
+# /backend-health just proxies to Byparr's root / which returns empty.
+echo '[COOKIE] Waiting for Byparr backend to accept requests...'
+for i in $(seq 1 60); do
+  if curl -sS --max-time 10 -X POST http://byparr-lb/v1 \
     -H 'Content-Type: application/json' \
-    -d '{"cmd":"request.get","url":"https://chaturbate.com","maxTimeout":60000}')
+    -d '{"cmd":"request.get","url":"https://chaturbate.com","maxTimeout":5}' > /dev/null 2>&1; then
+    echo '[COOKIE] Byparr backend is accepting requests'
+    break
+  fi
+  if [ "$i" -eq 60 ]; then
+    echo '[COOKIE] Byparr backend not ready yet, will retry in main loop...'
+  fi
+  sleep 5
+done
+
+# Use shorter timeout for initial attempts so we fail fast when Byparr
+# is still provisioning browser instances.
+BYPAAR_TIMEOUT=30
+attempt_num=0
+
+while true; do
+  attempt_num=$((attempt_num + 1))
+  # Increase timeout after first few attempts to give Byparr more time
+  if [ "$attempt_num" -gt 5 ]; then
+    BYPAAR_TIMEOUT=90
+  fi
+
+  echo "[COOKIE] Getting cf_clearance from Byparr... ($(date -u +%H:%M:%S), attempt $attempt_num, timeout ${BYPAAR_TIMEOUT}s)"
+  RESPONSE=$(curl -sS --fail --max-time $((BYPAAR_TIMEOUT + 10)) -X POST http://byparr-lb/v1 \
+    -H 'Content-Type: application/json' \
+    -d "{\"cmd\":\"request.get\",\"url\":\"https://chaturbate.com\",\"maxTimeout\":${BYPAAR_TIMEOUT}}")
   CF_COOKIE=$(echo "$RESPONSE" | jq -r '.solution.cookies[] | select(.name=="cf_clearance" or .name=="csrftoken") | .name + "=" + .value' 2>/dev/null | paste -sd ';' -)
   CF_USER_AGENT=$(echo "$RESPONSE" | jq -r '.solution.userAgent // empty' 2>/dev/null)
   if [ -n "$CF_COOKIE" ]; then
@@ -44,8 +72,9 @@ while true; do
       echo '[COOKIE] Could not push cookies to chaturbate-dvr after 5 min, will retry in 30 min'
       cat /tmp/cookie-push.json 2>/dev/null || true
     fi
+    sleep 1800
   else
-    echo '[COOKIE] Failed to get cf_clearance, retrying...'
+    echo '[COOKIE] Failed to get cf_clearance, retrying in 15 seconds...'
+    sleep 15
   fi
-  sleep 1800
 done
