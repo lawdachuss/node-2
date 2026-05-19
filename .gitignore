@@ -96,6 +96,10 @@ Thumbs.db
 *.tmp
 *.temp
 deploy.tar.gz
+last-run.txt
+
+# OpenClaude
+.openclaude/
 
 # Note: database/ is NOT ignored here — see "Database files" section above
 # (only database/* with !recordings.json exceptions)
