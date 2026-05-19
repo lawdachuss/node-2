@@ -135,17 +135,10 @@ type Channel struct {
 	UpdatedAt   string `json:"updated_at,omitempty"`
 }
 
-// SaveChannel creates or updates a channel using Supabase's upsert functionality
+// SaveChannel creates or updates a channel using Supabase's upsert functionality.
+// Uses on_conflict to atomically upsert by username, avoiding TOCTOU race conditions.
 func (c *Client) SaveChannel(ch *Channel) error {
-	// First, try to get existing channel
-	existing, err := c.GetChannel(ch.Username)
-	if err == nil && existing != nil {
-		// Channel exists, update it
-		return c.patch(fmt.Sprintf("/channels?username=eq.%s", url.QueryEscape(ch.Username)), ch)
-	}
-
-	// Channel doesn't exist, insert it
-	resp, err := c.request("POST", "/channels", ch)
+	resp, err := c.request("POST", "/channels?on_conflict=username", ch)
 	if err != nil {
 		return err
 	}
@@ -207,17 +200,10 @@ type Recording struct {
 	UpdatedAt    string   `json:"updated_at,omitempty"`
 }
 
-// SaveRecording creates or updates a recording using Supabase's upsert functionality
+// SaveRecording creates or updates a recording using Supabase's upsert functionality.
+// Uses on_conflict to atomically upsert by filename, avoiding TOCTOU race conditions.
 func (c *Client) SaveRecording(rec *Recording) error {
-	// First, try to get existing recording
-	existing, err := c.GetRecording(rec.Filename)
-	if err == nil && existing != nil {
-		// Recording exists, update it
-		return c.patch(fmt.Sprintf("/recordings?filename=eq.%s", url.QueryEscape(rec.Filename)), rec)
-	}
-
-	// Recording doesn't exist, insert it
-	resp, err := c.request("POST", "/recordings", rec)
+	resp, err := c.request("POST", "/recordings?on_conflict=filename", rec)
 	if err != nil {
 		return err
 	}
@@ -260,6 +246,16 @@ func (c *Client) GetAllRecordings() ([]Recording, error) {
 // DeleteRecording removes a recording
 func (c *Client) DeleteRecording(filename string) error {
 	return c.delete(fmt.Sprintf("/recordings?filename=eq.%s", url.QueryEscape(filename)))
+}
+
+// DeletePreviewImage removes a preview image by filename
+func (c *Client) DeletePreviewImage(filename string) error {
+	return c.delete(fmt.Sprintf("/preview_images?filename=eq.%s", url.QueryEscape(filename)))
+}
+
+// DeleteUploadLinksByRecordingID removes all upload links for a recording
+func (c *Client) DeleteUploadLinksByRecordingID(recordingID string) error {
+	return c.delete(fmt.Sprintf("/upload_links?recording_id=eq.%s", url.QueryEscape(recordingID)))
 }
 
 // ============================================================================
@@ -412,21 +408,13 @@ type PreviewImage struct {
 	Filename     string `json:"filename"`
 	ThumbnailURL string `json:"thumbnail_url,omitempty"`
 	SpriteURL    string `json:"sprite_url,omitempty"`
-	GithubPath   string `json:"github_path,omitempty"`
 	UploadedAt   string `json:"uploaded_at,omitempty"`
 }
 
-// SavePreviewImage creates or updates preview image metadata using Supabase's upsert functionality
+// SavePreviewImage creates or updates preview image metadata using Supabase's upsert functionality.
+// Uses on_conflict to atomically upsert by filename, avoiding TOCTOU race conditions.
 func (c *Client) SavePreviewImage(img *PreviewImage) error {
-	// First, try to get existing preview image
-	existing, err := c.GetPreviewImage(img.Filename)
-	if err == nil && existing != nil {
-		// Preview image exists, update it
-		return c.patch(fmt.Sprintf("/preview_images?filename=eq.%s", url.QueryEscape(img.Filename)), img)
-	}
-
-	// Preview image doesn't exist, insert it
-	resp, err := c.request("POST", "/preview_images", img)
+	resp, err := c.request("POST", "/preview_images?on_conflict=filename", img)
 	if err != nil {
 		return err
 	}
@@ -450,6 +438,13 @@ func (c *Client) GetPreviewImage(filename string) (*PreviewImage, error) {
 		return nil, fmt.Errorf("preview image not found")
 	}
 	return &images[0], nil
+}
+
+// GetAllPreviewImages returns all preview images from the database.
+func (c *Client) GetAllPreviewImages() ([]PreviewImage, error) {
+	var images []PreviewImage
+	err := c.get("/preview_images?limit=50000", &images)
+	return images, err
 }
 
 // ============================================================================

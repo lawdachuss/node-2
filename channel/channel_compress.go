@@ -79,7 +79,9 @@ func getEncoder() videoEncoder {
 // Uses hardware GPU encoding if available, falls back to CPU (libx264).
 // After successful compression, the original file is deleted.
 func (ch *Channel) CompressFile(srcPath string) {
+	ch.UploadWg.Add(1)
 	go func() {
+		defer ch.UploadWg.Done()
 		ext := filepath.Ext(srcPath)
 		mkvPath := strings.TrimSuffix(srcPath, ext) + ".mkv"
 		srcFilename := filepath.Base(srcPath)

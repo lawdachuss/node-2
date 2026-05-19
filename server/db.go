@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/teacat/chaturbate-dvr/database"
@@ -399,8 +400,10 @@ func LoadRecordingsFromDB() []byte {
 	return data
 }
 
-// SaveRecordingWithLinks saves a recording and its upload links directly to Supabase
-func SaveRecordingWithLinks(username, filename, timestamp, roomTitle string, tags []string, viewers int, resolution string, framerate int, filesize int64, gender, thumbnailURL, spriteURL, embedURL string, links map[string]string) error {
+// SaveRecordingWithLinks saves a recording and its upload links directly to Supabase.
+// Preview URLs should be saved separately via SavePreviewLinks before calling this.
+// This function only saves the recording metadata and upload links.
+func SaveRecordingWithLinks(username, filename, timestamp, roomTitle string, tags []string, viewers int, resolution string, framerate int, filesize int64, gender, embedURL string, links map[string]string) error {
 	client := GetDBClient()
 	if client == nil {
 		return fmt.Errorf("Supabase not configured")
@@ -408,37 +411,35 @@ func SaveRecordingWithLinks(username, filename, timestamp, roomTitle string, tag
 
 	// Look up channel ID for foreign key
 	rec := &database.Recording{
-		Username:     username,
-		Filename:     filename,
-		Timestamp:    timestamp,
-		RoomTitle:    roomTitle,
-		Tags:         tags,
-		Viewers:      viewers,
-		Resolution:   resolution,
-		Framerate:    framerate,
-		Filesize:     filesize,
-		Gender:       gender,
-		ThumbnailURL: thumbnailURL,
-		SpriteURL:    spriteURL,
-		EmbedURL:     embedURL,
+		Username:  username,
+		Filename:  filename,
+		Timestamp: timestamp,
+		RoomTitle: roomTitle,
+		Tags:      tags,
+		Viewers:   viewers,
+		Resolution: resolution,
+		Framerate: framerate,
+		Filesize:  filesize,
+		Gender:    gender,
+		EmbedURL:  embedURL,
 	}
 	if ch, err := client.GetChannel(username); err == nil {
 		rec.ChannelID = ch.ID
 	}
 
+	// Save recording first
 	if err := client.SaveRecording(rec); err != nil {
-		fmt.Printf("[WARN] Failed to save recording to Supabase: %v\n", err)
-		return err
+		return fmt.Errorf("save recording: %w", err)
 	}
 
-	// Get the saved recording to get its ID
+	// Get the saved recording to get its ID for upload links
 	savedRec, err := client.GetRecording(filename)
 	if err != nil {
-		fmt.Printf("[WARN] Failed to get recording after save: %v\n", err)
-		return err
+		return fmt.Errorf("get recording after save: %w", err)
 	}
 
-	// Save upload links
+	// Save upload links (non-fatal per link)
+	var linkErrs []string
 	for host, url := range links {
 		link := &database.UploadLink{
 			RecordingID: savedRec.ID,
@@ -446,21 +447,12 @@ func SaveRecordingWithLinks(username, filename, timestamp, roomTitle string, tag
 			URL:         url,
 		}
 		if err := client.SaveUploadLink(link); err != nil {
-			fmt.Printf("[WARN] Failed to save upload link (%s): %v\n", host, err)
+			linkErrs = append(linkErrs, fmt.Sprintf("%s: %v", host, err))
 		}
 	}
 
-	// Save preview images
-	if thumbnailURL != "" || spriteURL != "" {
-		img := &database.PreviewImage{
-			RecordingID:  savedRec.ID,
-			Filename:     filename,
-			ThumbnailURL: thumbnailURL,
-			SpriteURL:    spriteURL,
-		}
-		if err := client.SavePreviewImage(img); err != nil {
-			fmt.Printf("[WARN] Failed to save preview image: %v\n", err)
-		}
+	if len(linkErrs) > 0 {
+		fmt.Printf("[WARN] Failed to save some upload links: %s\n", strings.Join(linkErrs, "; "))
 	}
 
 	return nil
@@ -534,4 +526,65 @@ func LoadPreviewLinks(filename string) (thumbnailURL, spriteURL string) {
 	}
 
 	return img.ThumbnailURL, img.SpriteURL
+}
+
+// LoadAllPreviewLinks returns a map of filename -> [thumbnailURL, spriteURL] for all preview images.
+// Use this instead of calling LoadPreviewLinks in a loop to avoid N+1 queries.
+func LoadAllPreviewLinks() map[string][2]string {
+	client := GetDBClient()
+	if client == nil {
+		return nil
+	}
+
+	images, err := client.GetAllPreviewImages()
+	if err != nil {
+		fmt.Printf("[WARN] Failed to load all preview images: %v\n", err)
+		return nil
+	}
+
+	result := make(map[string][2]string, len(images))
+	for _, img := range images {
+		if img.Filename != "" && (img.ThumbnailURL != "" || img.SpriteURL != "") {
+			result[img.Filename] = [2]string{img.ThumbnailURL, img.SpriteURL}
+		}
+	}
+	return result
+}
+
+// DeleteVideoCompletely removes all data associated with a video:
+// - Recording from Supabase recordings table
+// - Preview images from Supabase preview_images table
+// - Upload links from Supabase upload_links table
+// Returns a combined error if any deletion fails.
+func DeleteVideoCompletely(filename string) error {
+	client := GetDBClient()
+	if client == nil {
+		return nil // No DB configured, nothing to delete
+	}
+
+	var errs []string
+
+	// Get recording ID first (needed for upload links)
+	rec, err := client.GetRecording(filename)
+	if err == nil && rec != nil {
+		// Delete upload links by recording ID
+		if err := client.DeleteUploadLinksByRecordingID(rec.ID); err != nil {
+			errs = append(errs, fmt.Sprintf("upload links: %v", err))
+		}
+	}
+
+	// Delete preview images
+	if err := client.DeletePreviewImage(filename); err != nil {
+		errs = append(errs, fmt.Sprintf("preview images: %v", err))
+	}
+
+	// Delete recording
+	if err := client.DeleteRecording(filename); err != nil {
+		errs = append(errs, fmt.Sprintf("recording: %v", err))
+	}
+
+	if len(errs) > 0 {
+		return fmt.Errorf("delete errors: %s", strings.Join(errs, "; "))
+	}
+	return nil
 }

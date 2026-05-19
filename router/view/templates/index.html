@@ -6,7 +6,7 @@
     <link rel="stylesheet" href="/static/styles/app.css" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,300;0,14..32,400;0,14..32,500;0,14..32,600;0,14..32,700;0,14..32,800;0,14..32,900;1,14..32,400&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=Outfit:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
     <script src="/static/scripts/htmx.min.js" crossorigin="anonymous"></script>
     <script src="/static/scripts/sse.min.js" crossorigin="anonymous"></script>
     <link rel="apple-touch-icon" sizes="180x180" href="/static/apple-touch-icon.png">
@@ -23,11 +23,11 @@
         })();
     </script>
     <style>
-        body { background-color: #09090b; }
-        .sidebar-bg { background: #0c0c0f; }
-        .main-bg { background: #0f0f12; }
+        body { background-color: var(--bg-body); }
+        .sidebar-bg { background: var(--bg-surface-alt); }
+        .main-bg { background: var(--bg-surface); }
         .panel-bg { background: rgba(18,18,22,0.95); }
-        .log-bg { background: #0a0a0d; }
+        .log-bg { background: var(--bg-card); }
         .glass {
             background: rgba(255,255,255,0.03);
             backdrop-filter: blur(12px);
@@ -46,14 +46,14 @@
         .input-field:focus {
             outline: none;
             background: rgba(255,255,255,0.06);
-            border-color: rgba(225,29,72,0.4);
-            box-shadow: 0 0 0 3px rgba(225,29,72,0.08);
+            border-color: rgba(212,160,83,0.4);
+            box-shadow: 0 0 0 3px rgba(212,160,83,0.08);
         }
         .input-field::placeholder { color: #52525b; }
         textarea.input-field { resize: none; font-family: ui-monospace, monospace; font-size: 12px; }
         select.input-field { cursor: pointer; padding-right: 2.5rem; }
         .btn-primary {
-            background: linear-gradient(135deg, #e11d48, #be185d);
+            background: linear-gradient(135deg, #d4a053, #a07830);
             color: white;
             border: none;
             border-radius: 10px;
@@ -62,11 +62,11 @@
             padding: 10px 20px;
             cursor: pointer;
             transition: all 0.2s ease;
-            box-shadow: 0 4px 15px rgba(225,29,72,0.3), 0 1px 3px rgba(0,0,0,0.3);
+            box-shadow: 0 4px 15px rgba(212,160,83,0.3), 0 1px 3px rgba(0,0,0,0.3);
         }
         .btn-primary:hover {
-            background: linear-gradient(135deg, #f43f5e, #e11d48);
-            box-shadow: 0 6px 20px rgba(225,29,72,0.4), 0 1px 3px rgba(0,0,0,0.3);
+            background: linear-gradient(135deg, #e8c06a, #d4a053);
+            box-shadow: 0 6px 20px rgba(212,160,83,0.4), 0 1px 3px rgba(0,0,0,0.3);
             transform: translateY(-1px);
         }
         .btn-secondary {
@@ -93,14 +93,14 @@
     <aside id="sidebar" class="w-[256px] max-md:w-full sidebar-bg border-r border-white/[0.05] max-md:border-r-0 flex flex-col shrink-0 relative overflow-hidden">
 
         <!-- Ambient glow -->
-        <div class="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-rose-500/60 to-transparent"></div>
-        <div class="absolute top-0 left-1/2 -translate-x-1/2 w-32 h-32 rounded-full bg-rose-600/5 blur-3xl pointer-events-none"></div>
+        <div class="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-amber-500/60 to-transparent"></div>
+        <div class="absolute top-0 left-1/2 -translate-x-1/2 w-32 h-32 rounded-full bg-amber-600/5 blur-3xl pointer-events-none"></div>
 
         <!-- Header -->
         <div class="relative px-4 pt-5 pb-4 border-b border-white/[0.05]">
             <div class="flex items-center gap-2.5 mb-1">
                 <div class="relative">
-                    <span class="w-2 h-2 rounded-full bg-rose-500 brand-dot block shrink-0"></span>
+                    <span class="w-2 h-2 rounded-full bg-amber-500 brand-dot block shrink-0"></span>
                 </div>
                 <h1 class="text-[11px] font-black uppercase tracking-[0.2em] text-zinc-100">Chaturbate DVR</h1>
             </div>
@@ -139,7 +139,7 @@
                         data-priority="{{ if and .IsOnline (not .IsPaused) }}0{{ else if .IsPaused }}{{ if .IsOnline }}2{{ else }}3{{ end }}{{ else }}1{{ end }}"
                         onclick="selectChannel('{{ .Username }}')">
                     <span class="relative shrink-0">
-                        <span class="w-2 h-2 rounded-full block {{ if and .IsOnline (not .IsPaused) }}bg-emerald-400 rec-pulse{{ else if .IsPaused }}bg-rose-500{{ else }}bg-zinc-600{{ end }}"
+                        <span class="w-2 h-2 rounded-full block {{ if and .IsOnline (not .IsPaused) }}bg-emerald-400 rec-pulse{{ else if .IsPaused }}bg-amber-500{{ else }}bg-zinc-600{{ end }}"
                               data-status-dot="{{ .Username }}"></span>
                     </span>
                     <span class="text-[13px] font-medium flex-1 truncate text-zinc-300 channel-username">{{ .Username }}</span>
@@ -164,7 +164,7 @@
                 <span class="text-[10px] text-zinc-600 tabular-nums">{{ .Disk.Used }} / {{ .Disk.Total }}</span>
             </div>
             <div class="w-full h-1.5 rounded-full overflow-hidden" style="background:rgba(255,255,255,0.05)">
-                <div class="h-full rounded-full transition-all duration-700 {{ if gt .Disk.Percent 80 }}bg-gradient-to-r from-red-600 to-rose-500{{ else if gt .Disk.Percent 60 }}bg-gradient-to-r from-amber-600 to-orange-500{{ else }}bg-gradient-to-r from-emerald-600 to-teal-500{{ end }}"
+                <div class="h-full rounded-full transition-all duration-700 {{ if gt .Disk.Percent 80 }}bg-gradient-to-r from-red-600 to-red-500{{ else if gt .Disk.Percent 60 }}bg-gradient-to-r from-amber-600 to-orange-500{{ else }}bg-gradient-to-r from-emerald-600 to-teal-500{{ end }}"
                      style="width:{{ .Disk.Percent }}%"></div>
             </div>
             <div class="text-[9px] text-zinc-700 mt-1.5">{{ .Disk.Free }} free</div>
@@ -174,7 +174,7 @@
         <div class="px-4 py-3 border-t border-white/[0.05] flex items-center justify-between">
             <a href="/videos"
                class="flex items-center gap-1.5 text-[11px] font-medium text-zinc-600 hover:text-zinc-200 transition-colors group">
-                <svg class="w-3.5 h-3.5 group-hover:text-rose-400 transition-colors" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <svg class="w-3.5 h-3.5 group-hover:text-amber-400 transition-colors" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                     <path d="M15.75 10.5l4.72-4.72a.75.75 0 011.28.53v11.38a.75.75 0 01-1.28.53l-4.72-4.72M4.5 18.75h9a2.25 2.25 0 002.25-2.25v-9a2.25 2.25 0 00-2.25-2.25h-9A2.25 2.25 0 002.25 7.5v9a2.25 2.25 0 002.25 2.25z"/>
                 </svg>
                 Videos
@@ -187,13 +187,13 @@
     </aside>
 
     <!-- ═══════════════════ MAIN CONTENT ═══════════════════ -->
-    <main id="main-content" class="flex-1 flex flex-col overflow-hidden max-md:hidden" style="background:#0f0f12" {{ if .Channels }}sse-connect="/updates?stream=updates"{{ end }}>
+    <main id="main-content" class="flex-1 flex flex-col overflow-hidden max-md:hidden" style="background:var(--bg-surface)" {{ if .Channels }}sse-connect="/updates?stream=updates"{{ end }}>
 
         {{ if not .Channels }}
         <!-- Empty state -->
         <div class="flex-1 flex flex-col items-center justify-center">
             <div class="relative mb-6">
-                <div class="absolute inset-0 rounded-3xl bg-rose-600/10 blur-2xl scale-150"></div>
+                <div class="absolute inset-0 rounded-3xl bg-amber-600/10 blur-2xl scale-150"></div>
                 <div class="relative w-20 h-20 rounded-3xl flex items-center justify-center" style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.07)">
                     <svg class="w-9 h-9 text-zinc-700" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
                         <path d="M15.75 10.5l4.72-4.72a.75.75 0 011.28.53v11.38a.75.75 0 01-1.28.53l-4.72-4.72M4.5 18.75h9a2.25 2.25 0 002.25-2.25v-9a2.25 2.25 0 00-2.25-2.25h-9A2.25 2.25 0 002.25 7.5v9a2.25 2.25 0 002.25 2.25z"/>
@@ -245,7 +245,7 @@
                         <div class="ml-auto flex items-center gap-1 flex-wrap">
                             <button class="log-filter-btn active" data-filter="all">all</button>
                             <button class="log-filter-dot" data-filter="play"     title="Recording"  style="color:#10b981">●</button>
-                            <button class="log-filter-dot" data-filter="stop"     title="Stopped"    style="color:#e11d48">●</button>
+                            <button class="log-filter-dot" data-filter="stop"     title="Stopped"    style="color:#d4a053">●</button>
                             <button class="log-filter-dot" data-filter="error"    title="Error"      style="color:#ef4444">●</button>
                             <button class="log-filter-dot" data-filter="compress" title="Compress"   style="color:#8b5cf6">●</button>
                             <button class="log-filter-dot" data-filter="mux"      title="Mux"        style="color:#06b6d4">●</button>
@@ -271,7 +271,7 @@
                     <!-- Footer -->
                     <div class="flex items-center justify-between px-3 py-1.5 shrink-0" style="background:#07070a;border-top:1px solid rgba(255,255,255,0.04)">
                         <label class="inline-flex items-center gap-2 cursor-pointer select-none" style="font-family:ui-monospace,monospace;font-size:10px;color:#2e2e34">
-                            <input type="checkbox" checked class="log-scroll-toggle accent-rose-500" style="width:10px;height:10px" />
+                            <input type="checkbox" checked class="log-scroll-toggle accent-amber-500" style="width:10px;height:10px" />
                             auto-scroll
                         </label>
                         <span style="font-family:ui-monospace,monospace;font-size:10px;color:#2e2e34" id="{{ .Username }}-log-count"></span>
@@ -293,8 +293,8 @@
         <!-- Header -->
         <div class="flex items-center justify-between px-6 py-5" style="border-bottom:1px solid rgba(255,255,255,0.06)">
             <div class="flex items-center gap-3">
-                <div class="w-8 h-8 rounded-xl flex items-center justify-center" style="background:rgba(225,29,72,0.12);border:1px solid rgba(225,29,72,0.2)">
-                    <svg class="w-4 h-4 text-rose-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <div class="w-8 h-8 rounded-xl flex items-center justify-center" style="background:rgba(212,160,83,0.12);border:1px solid rgba(212,160,83,0.2)">
+                    <svg class="w-4 h-4 text-amber-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                         <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/>
                     </svg>
                 </div>
@@ -310,12 +310,12 @@
             <div>
                 <label class="block text-xs font-semibold text-zinc-400 mb-2 uppercase tracking-wider">Cookies</label>
                 <textarea name="cookies" rows="4" class="input-field" style="font-family:ui-monospace,monospace;font-size:12px">{{ .Config.Cookies }}</textarea>
-                <p class="text-[11px] text-zinc-600 mt-1.5">Separate multiple cookies with semicolons. See <a class="text-rose-400 hover:text-rose-300 underline" href="https://github.com/teacat/chaturbate-dvr/?tab=readme-ov-file#-cookies--user-agent" target="_blank">README</a> for details.</p>
+                <p class="text-[11px] text-zinc-600 mt-1.5">Separate multiple cookies with semicolons. See <a class="text-amber-400 hover:text-amber-300 underline" href="https://github.com/teacat/chaturbate-dvr/?tab=readme-ov-file#-cookies--user-agent" target="_blank">README</a> for details.</p>
             </div>
             <div>
                 <label class="block text-xs font-semibold text-zinc-400 mb-2 uppercase tracking-wider">User Agent</label>
                 <textarea name="user_agent" rows="3" class="input-field" style="font-family:ui-monospace,monospace;font-size:12px">{{ .Config.UserAgent }}</textarea>
-                <p class="text-[11px] text-zinc-600 mt-1.5">Find yours at <a class="text-rose-400 hover:text-rose-300 underline" href="https://www.whatismybrowser.com/detect/what-is-my-user-agent/" target="_blank">WhatIsMyBrowser</a>.</p>
+                <p class="text-[11px] text-zinc-600 mt-1.5">Find yours at <a class="text-amber-400 hover:text-amber-300 underline" href="https://www.whatismybrowser.com/detect/what-is-my-user-agent/" target="_blank">WhatIsMyBrowser</a>.</p>
             </div>
             <div>
                 <label class="block text-xs font-semibold text-zinc-400 mb-2 uppercase tracking-wider">Byparr / FlareSolverr URL</label>
@@ -342,8 +342,8 @@
         <!-- Header -->
         <div class="flex items-center justify-between px-6 py-5" style="border-bottom:1px solid rgba(255,255,255,0.06)">
             <div class="flex items-center gap-3">
-                <div class="w-8 h-8 rounded-xl flex items-center justify-center" style="background:rgba(225,29,72,0.12);border:1px solid rgba(225,29,72,0.2)">
-                    <svg class="w-4 h-4 text-rose-400" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M12 5v14m-7-7h14"/></svg>
+                <div class="w-8 h-8 rounded-xl flex items-center justify-center" style="background:rgba(212,160,83,0.12);border:1px solid rgba(212,160,83,0.2)">
+                    <svg class="w-4 h-4 text-amber-400" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M12 5v14m-7-7h14"/></svg>
                 </div>
                 <h2 class="text-base font-bold">Add Channel</h2>
             </div>
@@ -384,11 +384,11 @@
                     <label class="block text-xs font-semibold text-zinc-400 mb-2 uppercase tracking-wider">Framerate</label>
                     <div class="space-y-2 pt-1">
                         <label class="flex items-center gap-2.5 text-sm cursor-pointer text-zinc-400 hover:text-zinc-200 transition-colors">
-                            <input type="radio" name="framerate" value="60" {{ if eq .Config.Framerate 60 }}checked{{ end }} class="accent-rose-500" />
+                            <input type="radio" name="framerate" value="60" {{ if eq .Config.Framerate 60 }}checked{{ end }} class="accent-amber-500" />
                             60 FPS
                         </label>
                         <label class="flex items-center gap-2.5 text-sm cursor-pointer text-zinc-400 hover:text-zinc-200 transition-colors">
-                            <input type="radio" name="framerate" value="30" {{ if eq .Config.Framerate 30 }}checked{{ end }} class="accent-rose-500" />
+                            <input type="radio" name="framerate" value="30" {{ if eq .Config.Framerate 30 }}checked{{ end }} class="accent-amber-500" />
                             30 FPS
                         </label>
                     </div>
@@ -399,7 +399,7 @@
             <div>
                 <label class="block text-xs font-semibold text-zinc-400 mb-2 uppercase tracking-wider">Filename Pattern</label>
                 <input type="text" name="pattern" value="{{ .Config.Pattern }}" class="input-field" />
-                <p class="text-[11px] text-zinc-600 mt-1.5">See the <a class="text-rose-400 hover:text-rose-300 underline" href="https://github.com/teacat/chaturbate-dvr" target="_blank">README</a> for template variables.</p>
+                <p class="text-[11px] text-zinc-600 mt-1.5">See the <a class="text-amber-400 hover:text-amber-300 underline" href="https://github.com/teacat/chaturbate-dvr" target="_blank">README</a> for template variables.</p>
             </div>
 
             <!-- Divider -->
@@ -424,7 +424,7 @@
 
             <!-- Compress -->
             <label class="flex items-center gap-3 cursor-pointer p-3 rounded-xl transition-colors hover:bg-white/[0.02]" style="border:1px solid rgba(255,255,255,0.06)">
-                <input type="checkbox" name="compress" value="true" {{ if .Config.Compress }}checked{{ end }} class="w-4 h-4 accent-rose-500 rounded" />
+                <input type="checkbox" name="compress" value="true" {{ if .Config.Compress }}checked{{ end }} class="w-4 h-4 accent-amber-500 rounded" />
                 <div>
                     <div class="text-sm font-medium text-zinc-300">Compress with ffmpeg</div>
                     <div class="text-[11px] text-zinc-600 mt-0.5">Convert recordings to .mkv after capture</div>
@@ -668,7 +668,7 @@ document.addEventListener('htmx:sseMessage', function(e) {
                     dot.className = 'w-2 h-2 rounded-full block bg-emerald-400 rec-pulse';
                     if (item) item.dataset.priority = '0';
                 } else if (status === 'paused') {
-                    dot.className = 'w-2 h-2 rounded-full block bg-rose-500';
+                    dot.className = 'w-2 h-2 rounded-full block bg-amber-500';
                     if (item) item.dataset.priority = '3';
                 } else {
                     dot.className = 'w-2 h-2 rounded-full block bg-zinc-600';

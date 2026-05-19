@@ -6,7 +6,7 @@
     <link rel="stylesheet" href="/static/styles/app.css" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,300;0,14..32,400;0,14..32,500;0,14..32,600;0,14..32,700;0,14..32,800;0,14..32,900&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=Outfit:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
     <link rel="apple-touch-icon" sizes="180x180" href="/static/apple-touch-icon.png">
     <link rel="icon" type="image/png" sizes="32x32" href="/static/favicon-32x32.png">
     <link rel="icon" type="image/png" sizes="16x16" href="/static/favicon-16x16.png">
@@ -22,13 +22,13 @@
     </script>
     <style>
         * { box-sizing: border-box; }
-        body { background: #06060a; color: #e4e4e7; min-height: 100dvh; font-family: 'Inter', sans-serif; -webkit-font-smoothing: antialiased; }
+        body { background: var(--bg-body); color: var(--text-primary); min-height: 100dvh; font-family: 'DM Sans', sans-serif; -webkit-font-smoothing: antialiased; }
 
         /* ── Header ── */
         .page-header {
-            background: rgba(8,8,12,0.85);
+            background: var(--bg-surface-alt);
             backdrop-filter: blur(24px) saturate(1.2);
-            border-bottom: 1px solid rgba(255,255,255,0.04);
+            border-bottom: 1px solid var(--border-subtle);
             position: sticky; top: 0; z-index: 50;
         }
         .search-input {
@@ -41,7 +41,7 @@
             width: 240px;
             transition: all 0.25s cubic-bezier(0.4,0,0.2,1);
         }
-        .search-input:focus { outline: none; width: 300px; background: rgba(255,255,255,0.06); border-color: rgba(225,29,72,0.4); box-shadow: 0 0 0 4px rgba(225,29,72,0.08), 0 0 20px rgba(225,29,72,0.05); }
+        .search-input:focus { outline: none; width: 300px; background: rgba(255,255,255,0.06); border-color: rgba(212,160,83,0.4); box-shadow: 0 0 0 4px rgba(212,160,83,0.08), 0 0 20px rgba(212,160,83,0.05); }
         .search-input::placeholder { color: #3f3f46; }
         .filter-btn {
             display: inline-flex; align-items: center; gap: 6px;
@@ -63,12 +63,12 @@
             background: transparent; border: none;
         }
         .dropdown-item:hover { background: rgba(255,255,255,0.05); color: #e4e4e7; }
-        .dropdown-item.active { color: #fb7185; background: rgba(225,29,72,0.08); }
+        .dropdown-item.active { color: #d4a053; background: rgba(212,160,83,0.08); }
         .group-header-line { background: rgba(255,255,255,0.04); }
 
         /* ── Video Card ── */
         .video-card {
-            background: rgba(14,14,18,0.8);
+            background: rgba(16,14,12,0.8);
             border: 1px solid rgba(255,255,255,0.05);
             border-radius: 16px;
             overflow: hidden;
@@ -80,14 +80,14 @@
         .card-thumb {
             position: relative;
             overflow: hidden;
-            background: #0a0a0e;
+            background: var(--bg-card);
             aspect-ratio: 16/9;
         }
         .card-thumb::after {
             content: '';
             position: absolute;
             inset: 0;
-            background: linear-gradient(to top, rgba(6,6,10,0.95) 0%, rgba(6,6,10,0.3) 35%, transparent 60%);
+            background: linear-gradient(to top, rgba(10,9,8,0.95) 0%, rgba(10,9,8,0.3) 35%, transparent 60%);
             pointer-events: none;
             z-index: 1;
         }
@@ -108,6 +108,8 @@
         .video-card:hover .sprite-overlay { opacity: 1; }
         .sprite-slideshow {
             width: 100%; height: 100%;
+            background-size: cover;
+            background-position: center;
         }
 
         /* ── Play button ── */
@@ -120,20 +122,22 @@
         }
         .video-card:hover .play-btn-wrap { opacity: 1; }
         .play-btn {
-            width: 52px; height: 52px;
+            width: 56px; height: 56px;
             border-radius: 50%;
             display: flex; align-items: center; justify-content: center;
-            background: rgba(255,255,255,0.1);
-            border: 1px solid rgba(255,255,255,0.2);
-            box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+            background: linear-gradient(135deg, rgba(212,160,83,0.25), rgba(180,130,60,0.15));
+            border: 1px solid rgba(212,160,83,0.3);
+            box-shadow: 0 8px 32px rgba(0,0,0,0.4), 0 0 20px rgba(212,160,83,0.1);
+            transition: transform 0.2s cubic-bezier(0.34,1.56,0.64,1), box-shadow 0.2s ease;
         }
-        .play-btn svg { width: 22px; height: 22px; color: white; margin-left: 2px; }
+        .video-card:hover .play-btn { transform: scale(1.1); box-shadow: 0 8px 32px rgba(0,0,0,0.5), 0 0 30px rgba(212,160,83,0.2); }
+        .play-btn svg { width: 20px; height: 20px; color: #d4a053; margin-left: 2px; }
 
         /* ── Badges ── */
         .card-badges {
             position: absolute; top: 10px; left: 10px; right: 10px;
             display: flex; align-items: flex-start; justify-content: space-between;
-            gap: 6px; pointer-events: none; z-index: 4;
+            gap: 6px; pointer-events: none; z-index: 6;
         }
         .badge {
             font-size: 9px; font-weight: 700; padding: 3px 8px;
@@ -142,12 +146,12 @@
             color: white;
             border: 1px solid rgba(255,255,255,0.08);
         }
-        .badge-res { background: linear-gradient(135deg, rgba(225,29,72,0.3), rgba(225,29,72,0.15)); border-color: rgba(225,29,72,0.2); }
+        .badge-res { background: linear-gradient(135deg, rgba(212,160,83,0.3), rgba(212,160,83,0.15)); border-color: rgba(212,160,83,0.2); }
         .badge-size { background: rgba(0,0,0,0.75); }
 
         /* ── Card body ── */
         .card-body { padding: 14px 16px 16px; }
-        .card-title { font-size: 13px; font-weight: 700; color: #f4f4f5; letter-spacing: -0.01em; line-height: 1.3; }
+        .card-title { font-size: 13px; font-weight: 700; color: #f4f4f5; letter-spacing: -0.01em; line-height: 1.3; font-family: 'Outfit', sans-serif; }
         .card-subtitle { font-size: 10px; color: #3f3f46; font-family: 'SF Mono', 'Fira Code', monospace; margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .card-room-title { font-size: 11px; color: #52525b; font-style: italic; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
@@ -160,7 +164,7 @@
             border: 1px solid rgba(139,92,246,0.15);
             transition: all 0.15s;
         }
-        .tag-badge:hover { background: rgba(139,92,246,0.15); }
+        .tag-badge:hover { background: rgba(139,92,246,0.15); border-color: rgba(212,160,83,0.2); }
 
         /* ── Host badge ── */
         .host-badge {
@@ -196,7 +200,7 @@
             cursor: pointer;
             transition: all 0.15s;
         }
-        .delete-btn:hover { background: rgba(225,29,72,0.1); border-color: rgba(225,29,72,0.2); color: #f87171; }
+        .delete-btn:hover { background: rgba(212,160,83,0.1); border-color: rgba(212,160,83,0.2); color: #d4a053; }
 
         /* ── Empty state ── */
         .empty-icon {
@@ -211,7 +215,7 @@
             content: '';
             position: absolute;
             inset: -20px;
-            background: radial-gradient(circle, rgba(225,29,72,0.06) 0%, transparent 70%);
+            background: radial-gradient(circle, rgba(212,160,83,0.06) 0%, transparent 70%);
             border-radius: 50%;
         }
     </style>
@@ -228,7 +232,7 @@
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
             </a>
             <div>
-                <h1 class="text-base font-black tracking-tight leading-none text-zinc-100">Library</h1>
+                <h1 class="text-base font-black tracking-tight leading-none text-zinc-100 font-['Outfit']">Library</h1>
                 <p class="text-[10px] text-zinc-600 mt-0.5">{{ len .Videos }} recordings &middot; {{ len .Groups }} channels</p>
             </div>
         </div>
@@ -288,11 +292,11 @@
         <div class="flex items-center gap-3 mb-6">
             <div class="flex items-center gap-2.5 shrink-0">
                 <div class="w-8 h-8 rounded-full flex items-center justify-center shrink-0 text-[11px] font-black text-white"
-                     style="background:linear-gradient(135deg,#e11d48,#7c3aed)">
+                     style="background:linear-gradient(135deg,#d4a053,#a07830)">
                     {{ slice .Username 0 1 }}
                 </div>
                 <div>
-                    <a href="/channel?name={{ .Username }}" class="text-sm font-bold text-zinc-100 hover:text-rose-400 transition-colors">{{ .Username }}</a>
+                    <a href="/channel?name={{ .Username }}" class="text-sm font-bold text-zinc-100 hover:text-amber-400 transition-colors font-['Outfit']">{{ .Username }}</a>
                     {{ if .Gender }}
                     <span class="ml-1.5 text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-full {{ if eq .Gender "female" }}text-pink-400{{ else if eq .Gender "male" }}text-blue-400{{ else }}text-zinc-500{{ end }}"
                           style="{{ if eq .Gender "female" }}background:rgba(236,72,153,0.1);border:1px solid rgba(236,72,153,0.2){{ else if eq .Gender "male" }}background:rgba(59,130,246,0.1);border:1px solid rgba(59,130,246,0.2){{ else }}background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08){{ end }}">{{ .Gender }}</span>
@@ -310,27 +314,25 @@
         <!-- Video grid -->
         <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {{ range .Videos }}
-            <div class="video-card group"
+            <div class="video-card group {{ if .FullPath }}cursor-pointer{{ end }}"
                  data-filename="{{ .Filename }}"
                  data-username="{{ .Username }}"
-                 onclick="window.location.href='/video?path=videos%2F{{ .Filename | urlquery }}'">
+                 onclick="{{ if .FullPath }}window.location.href='/video?path={{ .FullPath | urlquery }}'{{ end }}">
 
                 <!-- Thumbnail -->
                 <div class="card-thumb">
-                    {{ if and .ThumbnailURL .FullPath }}
-                    <img src="{{ .ThumbnailURL }}" alt="" loading="lazy" />
-                    {{ else if .ThumbnailURL }}
+                    {{ if .ThumbnailURL }}
                     <img src="{{ .ThumbnailURL }}" alt="" loading="lazy" />
                     {{ end }}
 
                     {{ if .SpriteURL }}
                     <div class="sprite-overlay">
-                        <div class="sprite-slideshow" style="width:100%;height:100%;background-image:url('{{ .SpriteURL }}');background-size:cover;background-position:center;"></div>
+                        <div class="sprite-slideshow" style="background-image:url('{{ .SpriteURL }}');"></div>
                     </div>
                     {{ end }}
 
                     {{ if not .ThumbnailURL }}
-                    <div class="w-full h-full flex items-center justify-center" style="background:#0a0a0e">
+                    <div class="w-full h-full flex items-center justify-center" style="background:var(--bg-card)">
                         <svg class="w-10 h-10 text-zinc-800" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
                             <path d="M15.75 10.5l4.72-4.72a.75.75 0 011.28.53v11.38a.75.75 0 01-1.28.53l-4.72-4.72M4.5 18.75h9a2.25 2.25 0 002.25-2.25v-9a2.25 2.25 0 00-2.25-2.25h-9A2.25 2.25 0 002.25 7.5v9a2.25 2.25 0 002.25 2.25z"/>
                         </svg>

@@ -78,7 +78,7 @@ func (c *CatboxUploader) uploadOnce(filePath string) (string, error) {
 	}
 	defer resp.Body.Close()
 
-	body, err := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 10*1024*1024)) // 10MB limit
 	if err != nil {
 		return "", fmt.Errorf("catbox: read response: %w", err)
 	}

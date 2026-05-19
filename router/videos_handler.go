@@ -17,6 +17,7 @@ import (
 
 type RecordingEntry struct {
         Filename     string            `json:"filename"`
+        FullPath     string            `json:"full_path,omitempty"`
         Timestamp    string            `json:"timestamp"`
         RoomTitle    string            `json:"room_title"`
         Tags         []string          `json:"tags"`
@@ -120,13 +121,16 @@ func scanVideos() []*VideoEntry {
                 dirs = append(dirs, server.Config.OutputDir)
         }
 
+        // Batch-load all preview URLs to avoid N+1 queries
+        previewLinks := server.LoadAllPreviewLinks()
+
         for _, dir := range dirs {
                 absDir, err := filepath.Abs(dir)
                 if err != nil || seen[absDir] {
                         continue
                 }
                 seen[absDir] = true
-                entries = append(entries, walkDir(dir)...)
+                entries = append(entries, walkDir(dir, previewLinks)...)
         }
 
         recordings := loadRecordings()
@@ -203,7 +207,7 @@ func loadRecordings() *RecordingsDB {
 	return &db
 }
 
-func walkDir(dir string) []*VideoEntry {
+func walkDir(dir string, previewLinks map[string][2]string) []*VideoEntry {
 	var entries []*VideoEntry
 
 	d, err := os.Open(dir)
@@ -220,7 +224,7 @@ func walkDir(dir string) []*VideoEntry {
 	for _, item := range items {
 		full := filepath.Join(dir, item.Name())
 		if item.IsDir() {
-			entries = append(entries, walkDir(full)...)
+			entries = append(entries, walkDir(full, previewLinks)...)
 			continue
 		}
 
@@ -246,8 +250,12 @@ func walkDir(dir string) []*VideoEntry {
 			isOutput = strings.HasPrefix(absPath, absOut)
 		}
 
-		// Load preview URLs from Supabase
-		thumbURL, spriteURL := server.LoadPreviewLinks(item.Name())
+		// Look up preview URLs from preloaded map
+		var thumbURL, spriteURL string
+		if links, ok := previewLinks[item.Name()]; ok {
+			thumbURL = links[0]
+			spriteURL = links[1]
+		}
 
 		entries = append(entries, &VideoEntry{
 			Username:     username,

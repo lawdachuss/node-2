@@ -6,7 +6,7 @@
     <link rel="stylesheet" href="/static/styles/app.css" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,300;0,14..32,400;0,14..32,500;0,14..32,600;0,14..32,700;0,14..32,800;0,14..32,900&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=Outfit:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
     <link rel="apple-touch-icon" sizes="180x180" href="/static/apple-touch-icon.png">
     <link rel="icon" type="image/png" sizes="32x32" href="/static/favicon-32x32.png">
     <link rel="icon" type="image/png" sizes="16x16" href="/static/favicon-16x16.png">
@@ -25,7 +25,7 @@
     </script>
     <style>
         * { box-sizing: border-box; }
-        body { background: #06060a; color: #e4e4e7; min-height: 100dvh; font-family: 'Inter', sans-serif; -webkit-font-smoothing: antialiased; }
+        body { background: var(--bg-body); color: var(--text-primary); min-height: 100dvh; font-family: 'DM Sans', sans-serif; -webkit-font-smoothing: antialiased; }
 
         /* ── Theater mode ── */
         .theater #page-container, .theater #page-content { max-width: 100% !important; padding-left: 2rem; padding-right: 2rem; }
@@ -34,9 +34,9 @@
 
         /* ── Header ── */
         .page-header {
-            background: rgba(8,8,12,0.85);
+            background: var(--bg-surface-alt);
             backdrop-filter: blur(24px) saturate(1.2);
-            border-bottom: 1px solid rgba(255,255,255,0.04);
+            border-bottom: 1px solid var(--border-subtle);
             position: sticky; top: 0; z-index: 50;
         }
         .header-btn {
@@ -57,7 +57,7 @@
             border-radius: 16px;
             overflow: hidden;
             background: #000;
-            box-shadow: 0 0 0 1px rgba(255,255,255,0.04), 0 32px 80px rgba(0,0,0,0.8);
+            box-shadow: 0 0 0 1px rgba(212,160,83,0.06), 0 32px 80px rgba(0,0,0,0.8), 0 0 60px rgba(212,160,83,0.04);
         }
         .player-wrapper video {
             width: 100%;
@@ -70,7 +70,7 @@
         .custom-controls {
             position: absolute;
             bottom: 0; left: 0; right: 0;
-            background: linear-gradient(to top, rgba(0,0,0,0.9) 0%, rgba(0,0,0,0.5) 60%, transparent 100%);
+            background: linear-gradient(to top, rgba(10,9,8,0.95) 0%, rgba(10,9,8,0.5) 60%, transparent 100%);
             padding: 40px 16px 12px;
             opacity: 0;
             transition: opacity 0.25s ease;
@@ -82,17 +82,25 @@
         /* Progress bar */
         .progress-container {
             position: relative;
-            height: 4px;
-            background: rgba(255,255,255,0.15);
+            height: 5px;
+            background: rgba(255,255,255,0.12);
             border-radius: 4px;
             cursor: pointer;
             margin-bottom: 10px;
             transition: height 0.15s ease;
         }
-        .progress-container:hover { height: 6px; }
+        .progress-container:hover { height: 8px; }
+        .progress-buffer {
+            position: absolute;
+            top: 0; left: 0; bottom: 0;
+            background: rgba(255,255,255,0.15);
+            border-radius: 4px;
+            pointer-events: none;
+            transition: width 0.3s ease;
+        }
         .progress-bar {
             height: 100%;
-            background: linear-gradient(90deg, #e11d48, #f43f5e);
+            background: linear-gradient(90deg, #a07830, #d4a053, #e8c06a);
             border-radius: 4px;
             position: relative;
             transition: width 0.1s linear;
@@ -100,12 +108,12 @@
         .progress-container:hover .progress-bar::after {
             content: '';
             position: absolute;
-            right: -6px; top: 50%;
+            right: -7px; top: 50%;
             transform: translateY(-50%);
-            width: 12px; height: 12px;
-            background: #f43f5e;
+            width: 14px; height: 14px;
+            background: #d4a053;
             border-radius: 50%;
-            box-shadow: 0 0 8px rgba(225,29,72,0.5);
+            box-shadow: 0 0 12px rgba(212,160,83,0.6);
         }
         .progress-hover {
             position: absolute;
@@ -177,14 +185,14 @@
         .volume-slider::-webkit-slider-thumb {
             -webkit-appearance: none;
             width: 12px; height: 12px;
-            background: white;
+            background: #d4a053;
             border-radius: 50%;
             cursor: pointer;
-            box-shadow: 0 0 6px rgba(0,0,0,0.3);
+            box-shadow: 0 0 8px rgba(212,160,83,0.4);
         }
         .volume-slider::-moz-range-thumb {
             width: 12px; height: 12px;
-            background: white;
+            background: #d4a053;
             border-radius: 50%;
             cursor: pointer;
             border: none;
@@ -214,7 +222,101 @@
             -webkit-appearance: none;
         }
         .speed-select:hover { background: rgba(255,255,255,0.12); }
-        .speed-select option { background: #18181b; color: #e4e4e7; }
+        .speed-select option { background: var(--bg-input); color: var(--text-primary); }
+
+        /* ── Server selector ── */
+        .server-selector {
+            position: relative;
+        }
+        .server-btn {
+            display: flex; align-items: center; gap: 6px;
+            padding: 5px 10px;
+            border-radius: 8px;
+            background: rgba(255,255,255,0.06);
+            border: 1px solid rgba(255,255,255,0.08);
+            color: rgba(255,255,255,0.8);
+            font-size: 11px; font-weight: 600;
+            cursor: pointer;
+            transition: all 0.15s;
+            white-space: nowrap;
+        }
+        .server-btn:hover { background: rgba(255,255,255,0.12); border-color: rgba(255,255,255,0.15); }
+        .server-btn .server-dot {
+            width: 6px; height: 6px;
+            border-radius: 50%;
+            background: #22c55e;
+            flex-shrink: 0;
+        }
+        .server-btn .server-name { max-width: 80px; overflow: hidden; text-overflow: ellipsis; }
+        .server-btn svg { width: 12px; height: 12px; transition: transform 0.2s; }
+        .server-selector.open .server-btn svg { transform: rotate(180deg); }
+        .server-dropdown {
+            position: absolute;
+            bottom: calc(100% + 8px);
+            right: 0;
+            min-width: 200px;
+            max-height: 280px;
+            overflow-y: auto;
+            background: rgba(10,10,12,0.95);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 12px;
+            box-shadow: 0 16px 48px rgba(0,0,0,0.6);
+            z-index: 100;
+            opacity: 0;
+            transform: translateY(4px);
+            pointer-events: none;
+            transition: all 0.15s ease;
+        }
+        .server-selector.open .server-dropdown {
+            opacity: 1;
+            transform: translateY(0);
+            pointer-events: auto;
+        }
+        .server-dropdown-header {
+            padding: 10px 12px 6px;
+            font-size: 10px; font-weight: 700;
+            color: #71717a;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        .server-option {
+            display: flex; align-items: center; gap: 10px;
+            padding: 8px 12px;
+            cursor: pointer;
+            transition: background 0.15s;
+            border: none;
+            background: none;
+            width: 100%;
+            text-align: left;
+            font-family: inherit;
+        }
+        .server-option:hover { background: rgba(255,255,255,0.06); }
+        .server-option.active { background: rgba(212,160,83,0.1); }
+        .server-option .server-opt-dot {
+            width: 8px; height: 8px;
+            border-radius: 50%;
+            flex-shrink: 0;
+        }
+        .server-option .server-opt-dot.online { background: #22c55e; box-shadow: 0 0 6px rgba(34,197,94,0.4); }
+        .server-option .server-opt-dot.embed { background: #3b82f6; box-shadow: 0 0 6px rgba(59,130,246,0.4); }
+        .server-option .server-opt-dot.local { background: #d4a053; box-shadow: 0 0 6px rgba(212,160,83,0.4); }
+        .server-option .server-opt-info { flex: 1; min-width: 0; }
+        .server-option .server-opt-name {
+            font-size: 12px; font-weight: 600; color: #e4e4e7;
+            overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+        }
+        .server-option .server-opt-type {
+            font-size: 10px; color: #71717a; margin-top: 1px;
+        }
+        .server-option .server-opt-badge {
+            font-size: 9px; font-weight: 700;
+            padding: 2px 6px;
+            border-radius: 4px;
+            background: rgba(212,160,83,0.15);
+            color: #d4a053;
+        }
+        .server-option.active .server-opt-badge { background: rgba(212,160,83,0.25); }
 
         /* ── Center play overlay ── */
         .center-play {
@@ -228,17 +330,76 @@
         }
         .player-wrapper.paused .center-play { opacity: 1; }
         .center-play-btn {
-            width: 64px; height: 64px;
+            width: 72px; height: 72px;
             border-radius: 50%;
-            background: rgba(255,255,255,0.12);
-            border: 1px solid rgba(255,255,255,0.2);
+            background: linear-gradient(135deg, rgba(212,160,83,0.2), rgba(180,130,60,0.1));
+            border: 1px solid rgba(212,160,83,0.3);
             backdrop-filter: blur(12px);
             display: flex; align-items: center; justify-content: center;
             transition: all 0.2s;
-            box-shadow: 0 8px 40px rgba(0,0,0,0.4);
+            box-shadow: 0 8px 40px rgba(0,0,0,0.4), 0 0 30px rgba(212,160,83,0.1);
         }
-        .center-play:hover .center-play-btn { background: rgba(255,255,255,0.18); transform: scale(1.08); }
-        .center-play-btn svg { width: 28px; height: 28px; color: white; margin-left: 3px; }
+        .center-play:hover .center-play-btn { background: linear-gradient(135deg, rgba(212,160,83,0.3), rgba(180,130,60,0.2)); transform: scale(1.08); box-shadow: 0 8px 40px rgba(0,0,0,0.5), 0 0 40px rgba(212,160,83,0.2); }
+        .center-play-btn svg { width: 30px; height: 30px; color: #d4a053; margin-left: 3px; }
+
+        /* ── Poster overlay ── */
+        .poster-overlay {
+            position: absolute; inset: 0;
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+            z-index: 4;
+            transition: opacity 0.3s ease;
+            pointer-events: none;
+        }
+        .poster-overlay.hidden { opacity: 0; pointer-events: none; }
+
+        /* ── Skip indicator ── */
+        .skip-indicator {
+            position: absolute;
+            top: 50%; transform: translateY(-50%);
+            width: 80px; height: 80px;
+            border-radius: 50%;
+            background: rgba(0,0,0,0.6);
+            backdrop-filter: blur(8px);
+            display: flex; align-items: center; justify-content: center;
+            opacity: 0;
+            transition: opacity 0.2s ease;
+            pointer-events: none;
+            z-index: 6;
+        }
+        .skip-indicator.left { left: 15%; }
+        .skip-indicator.right { right: 15%; }
+        .skip-indicator.show { opacity: 1; animation: skipPop 0.4s ease; }
+        .skip-indicator svg { width: 28px; height: 28px; color: rgba(255,255,255,0.9); }
+        .skip-indicator .skip-text { font-size: 11px; font-weight: 600; color: rgba(255,255,255,0.9); margin-top: 2px; }
+        @keyframes skipPop {
+            0% { transform: translateY(-50%) scale(0.8); }
+            50% { transform: translateY(-50%) scale(1.1); }
+            100% { transform: translateY(-50%) scale(1); }
+        }
+
+        /* ── Loop indicator ── */
+        .loop-active { color: #d4a053 !important; }
+
+        /* ── Speed badge ── */
+        .speed-badge {
+            position: absolute;
+            top: 12px; right: 12px;
+            background: rgba(0,0,0,0.7);
+            backdrop-filter: blur(8px);
+            color: #d4a053;
+            font-size: 11px;
+            font-weight: 700;
+            padding: 4px 10px;
+            border-radius: 8px;
+            border: 1px solid rgba(212,160,83,0.2);
+            z-index: 6;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+            pointer-events: none;
+        }
+        .speed-badge.visible { opacity: 1; }
 
         /* ── Loading ── */
         .loading-overlay {
@@ -254,16 +415,16 @@
         /* ── Meta card ── */
         .meta-card {
             margin-top: 16px;
-            background: rgba(14,14,18,0.7);
+            background: rgba(16,14,12,0.7);
             backdrop-filter: blur(12px);
-            border: 1px solid rgba(255,255,255,0.05);
+            border: 1px solid rgba(212,160,83,0.06);
             border-radius: 16px;
             overflow: hidden;
         }
         .meta-top {
             padding: 20px 22px;
             display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 12px;
-            border-bottom: 1px solid rgba(255,255,255,0.04);
+            border-bottom: 1px solid var(--border-subtle);
         }
         .meta-grid {
             display: grid;
@@ -278,8 +439,8 @@
             border: 1px solid rgba(255,255,255,0.04);
             transition: all 0.15s;
         }
-        .meta-cell:hover { background: rgba(255,255,255,0.04); border-color: rgba(255,255,255,0.06); }
-        .meta-label { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.12em; color: #3f3f46; margin-bottom: 5px; }
+        .meta-cell:hover { background: rgba(212,160,83,0.04); border-color: rgba(212,160,83,0.08); }
+        .meta-label { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.12em; color: #3f3f46; margin-bottom: 5px; font-family: 'Outfit', sans-serif; }
         .meta-value { font-size: 13px; font-weight: 600; color: #d4d4d8; }
 
         /* ── Action buttons ── */
@@ -290,10 +451,10 @@
         }
         .action-btn-green { background: rgba(16,185,129,0.12); border: 1px solid rgba(16,185,129,0.2); color: #34d399; }
         .action-btn-green:hover { background: rgba(16,185,129,0.2); }
-        .action-btn-ghost { background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.07); color: #71717a; }
+        .action-btn-ghost { background: var(--bg-button); border: 1px solid var(--border-subtle); color: var(--text-button); }
         .action-btn-ghost:hover { background: rgba(255,255,255,0.08); color: #d4d4d8; }
-        .action-btn-danger { background: rgba(225,29,72,0.08); border: 1px solid rgba(225,29,72,0.15); color: #f87171; }
-        .action-btn-danger:hover { background: rgba(225,29,72,0.15); }
+        .action-btn-danger { background: rgba(212,160,83,0.08); border: 1px solid rgba(212,160,83,0.15); color: #d4a053; }
+        .action-btn-danger:hover { background: rgba(212,160,83,0.15); }
 
         /* ── Tags / badges ── */
         .tag-badge { font-size: 10px; font-weight: 600; padding: 3px 10px; border-radius: 20px; background: rgba(139,92,246,0.08); color: #a78bfa; border: 1px solid rgba(139,92,246,0.15); }
@@ -317,13 +478,13 @@
             transition: all 0.25s cubic-bezier(0.16,1,0.3,1);
         }
         .related-card:hover {
-            background: rgba(255,255,255,0.04);
-            border-color: rgba(225,29,72,0.12);
+            background: rgba(212,160,83,0.04);
+            border-color: rgba(212,160,83,0.12);
             transform: translateX(4px);
         }
         .related-thumb {
-            width: 96px; min-width: 96px; height: 56px;
-            border-radius: 8px; overflow: hidden; background: #0a0a0e;
+            width: 160px; min-width: 160px; height: 90px;
+            border-radius: 8px; overflow: hidden; background: var(--bg-card);
         }
         .related-thumb img { width: 100%; height: 100%; object-fit: cover; transition: transform 0.5s ease; }
         .related-card:hover .related-thumb img { transform: scale(1.08); }
@@ -359,7 +520,7 @@
             </a>
             <div class="min-w-0">
                 <div class="flex items-center gap-1.5 text-[11px] text-zinc-600 mb-0.5">
-                    <a href="/channel?name={{ .Username }}" class="hover:text-rose-400 transition-colors font-semibold text-zinc-500">{{ .Username }}</a>
+                    <a href="/channel?name={{ .Username }}" class="hover:text-amber-400 transition-colors font-semibold text-zinc-500">{{ .Username }}</a>
                     <span class="text-zinc-700">/</span>
                     <span class="truncate text-zinc-600 max-w-xs">{{ .Filename }}</span>
                 </div>
@@ -389,7 +550,7 @@
 
     <!-- Ambient glow -->
     <div style="position:relative">
-        <div style="position:absolute;top:10%;left:50%;transform:translateX(-50%);width:50%;height:250px;background:radial-gradient(ellipse,rgba(225,29,72,0.05) 0%,transparent 70%);pointer-events:none;z-index:0"></div>
+        <div style="position:absolute;top:10%;left:50%;transform:translateX(-50%);width:50%;height:250px;background:radial-gradient(ellipse,rgba(212,160,83,0.05) 0%,transparent 70%);pointer-events:none;z-index:0"></div>
     </div>
 
 {{ if .FullPath }}
@@ -403,6 +564,9 @@
             </svg>
             <span class="text-xs text-zinc-600">Loading video…</span>
         </div>
+        {{ if .ThumbnailURL }}
+        <div class="poster-overlay" id="poster-overlay" style="background-image:url('{{ .ThumbnailURL }}')"></div>
+        {{ end }}
         <video id="video-player" preload="metadata" playsinline
                poster="{{ if .ThumbnailURL }}{{ .ThumbnailURL }}{{ end }}"
                onloadeddata="playerLoaded()" onerror="playerError()" onplay="onPlay()" onpause="onPause()">
@@ -413,6 +577,21 @@
                 <svg fill="currentColor" viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21"/></svg>
             </div>
         </div>
+        <!-- Skip indicators -->
+        <div class="skip-indicator left" id="skip-back-indicator">
+            <div style="text-align:center">
+                <svg fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M12.066 11.2a1 1 0 000 1.6l5.334 4A1 1 0 0019 16V8a1 1 0 00-1.6-.8l-5.333 4zM4.066 11.2a1 1 0 000 1.6l5.334 4A1 1 0 0011 16V8a1 1 0 00-1.6-.8l-5.334 4z"/></svg>
+                <div class="skip-text">10s</div>
+            </div>
+        </div>
+        <div class="skip-indicator right" id="skip-fwd-indicator">
+            <div style="text-align:center">
+                <svg fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M11.933 12.8a1 1 0 000-1.6L6.6 7.2A1 1 0 005 8v8a1 1 0 001.6.8l5.333-4zM19.933 12.8a1 1 0 000-1.6l-5.333-4A1 1 0 0013 8v8a1 1 0 001.6.8l5.333-4z"/></svg>
+                <div class="skip-text">10s</div>
+            </div>
+        </div>
+        <!-- Speed badge -->
+        <div class="speed-badge" id="speed-badge">1x</div>
         <div id="error-message" class="hidden" style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#000;z-index:20;color:#71717a">
             <svg class="w-12 h-12 mb-3" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 8v4m0 4h.01"/></svg>
             <p class="text-sm mb-4">Could not load video</p>
@@ -421,6 +600,7 @@
         <!-- Custom controls -->
         <div class="custom-controls">
             <div class="progress-container" id="progress-container">
+                <div class="progress-buffer" id="progress-buffer" style="width:0%"></div>
                 <div class="progress-hover" id="progress-hover"></div>
                 <div class="progress-bar" id="progress-bar" style="width:0%"></div>
                 <div class="progress-time-tooltip" id="progress-tooltip">0:00</div>
@@ -430,6 +610,12 @@
                     <button class="ctrl-btn" onclick="togglePlay()" title="Play (Space)">
                         <svg id="icon-play" fill="currentColor" viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21"/></svg>
                         <svg id="icon-pause" fill="currentColor" viewBox="0 0 24 24" style="display:none"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
+                    </button>
+                    <button class="ctrl-btn" onclick="skipBack()" title="Back 10s (←)">
+                        <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12.066 11.2a1 1 0 000 1.6l5.334 4A1 1 0 0019 16V8a1 1 0 00-1.6-.8l-5.333 4zM4.066 11.2a1 1 0 000 1.6l5.334 4A1 1 0 0011 16V8a1 1 0 00-1.6-.8l-5.334 4z"/></svg>
+                    </button>
+                    <button class="ctrl-btn" onclick="skipForward()" title="Forward 10s (→)">
+                        <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M11.933 12.8a1 1 0 000-1.6L6.6 7.2A1 1 0 005 8v8a1 1 0 001.6.8l5.333-4zM19.933 12.8a1 1 0 000-1.6l-5.333-4A1 1 0 0013 8v8a1 1 0 001.6.8l5.333-4z"/></svg>
                     </button>
                     <div class="volume-wrap">
                         <button class="ctrl-btn" onclick="toggleMute()" title="Mute (M)">
@@ -441,6 +627,12 @@
                     <span class="time-display"><span id="time-current">0:00</span> / <span id="time-total">0:00</span></span>
                 </div>
                 <div class="ctrl-right">
+                    <button class="ctrl-btn" onclick="toggleLoop()" id="loop-btn" title="Loop (L)">
+                        <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                    </button>
+                    <button class="ctrl-btn" onclick="takeScreenshot()" title="Screenshot (S)">
+                        <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"/><circle cx="12" cy="13" r="3"/></svg>
+                    </button>
                     <select class="speed-select" onchange="changeSpeed(this.value)" title="Playback speed">
                         <option value="0.5">0.5x</option>
                         <option value="0.75">0.75x</option>
@@ -449,6 +641,37 @@
                         <option value="1.5">1.5x</option>
                         <option value="2">2x</option>
                     </select>
+                    <div class="server-selector" id="server-selector">
+                        <button class="server-btn" onclick="toggleServerMenu()" title="Switch server">
+                            <span class="server-dot"></span>
+                            <span class="server-name" id="current-server-name">Local</span>
+                            <svg fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M19 9l-7 7-7-7"/></svg>
+                        </button>
+                        <div class="server-dropdown" id="server-dropdown">
+                            <div class="server-dropdown-header">Servers</div>
+                            {{ if .FullPath }}
+                            <button class="server-option active" data-server="local" onclick="switchServer('local')">
+                                <span class="server-opt-dot local"></span>
+                                <div class="server-opt-info">
+                                    <div class="server-opt-name">Local File</div>
+                                    <div class="server-opt-type">Direct playback</div>
+                                </div>
+                                <span class="server-opt-badge">HD</span>
+                            </button>
+                            {{ end }}
+                            {{ range .HostPlayers }}
+                            {{ if or .EmbedURL .VideoURL }}
+                            <button class="server-option" data-server="{{ .Host }}" onclick="switchServer('{{ .Host }}')">
+                                <span class="server-opt-dot {{ if .VideoURL }}online{{ else }}embed{{ end }}"></span>
+                                <div class="server-opt-info">
+                                    <div class="server-opt-name">{{ .Host }}</div>
+                                    <div class="server-opt-type">{{ if .VideoURL }}Direct stream{{ else }}Embed{{ end }}</div>
+                                </div>
+                            </button>
+                            {{ end }}
+                            {{ end }}
+                        </div>
+                    </div>
                     <button class="ctrl-btn" onclick="togglePiP()" title="Picture-in-Picture (P)">
                         <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M15 15l6-6m0 0v4m0-4h-4M9 9H5a2 2 0 00-2 2v8a2 2 0 002 2h8a2 2 0 002-2v-4"/></svg>
                     </button>
@@ -513,11 +736,38 @@
                 </div>
                 <div class="ctrl-right">
                     {{ if .EmbedURL }}<button class="ctrl-btn" onclick="switchToEmbed()" title="Switch to embed" style="color:#34d399"><svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"/></svg></button>{{ end }}
+                    <button class="ctrl-btn" onclick="toggleLoop()" id="loop-btn" title="Loop (L)">
+                        <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                    </button>
                     <select class="speed-select" onchange="changeSpeed(this.value)" title="Playback speed">
                         <option value="0.5">0.5x</option><option value="0.75">0.75x</option><option value="1" selected>1x</option><option value="1.25">1.25x</option><option value="1.5">1.5x</option><option value="2">2x</option>
                     </select>
+                    <div class="server-selector" id="server-selector">
+                        <button class="server-btn" onclick="toggleServerMenu()" title="Switch server">
+                            <span class="server-dot"></span>
+                            <span class="server-name" id="current-server-name">Server</span>
+                            <svg fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M19 9l-7 7-7-7"/></svg>
+                        </button>
+                        <div class="server-dropdown" id="server-dropdown">
+                            <div class="server-dropdown-header">Servers</div>
+                            {{ range .HostPlayers }}
+                            {{ if or .EmbedURL .VideoURL }}
+                            <button class="server-option" data-server="{{ .Host }}" onclick="switchServer('{{ .Host }}')">
+                                <span class="server-opt-dot {{ if .VideoURL }}online{{ else }}embed{{ end }}"></span>
+                                <div class="server-opt-info">
+                                    <div class="server-opt-name">{{ .Host }}</div>
+                                    <div class="server-opt-type">{{ if .VideoURL }}Direct stream{{ else }}Embed{{ end }}</div>
+                                </div>
+                            </button>
+                            {{ end }}
+                            {{ end }}
+                        </div>
+                    </div>
                     <button class="ctrl-btn" onclick="togglePiP()" title="PiP (P)">
                         <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M15 15l6-6m0 0v4m0-4h-4M9 9H5a2 2 0 00-2 2v8a2 2 0 002 2h8a2 2 0 002-2v-4"/></svg>
+                    </button>
+                    <button class="ctrl-btn" onclick="toggleFullscreen()" title="Fullscreen (F)">
+                        <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"/></svg>
                     </button>
                 </div>
             </div>
@@ -557,12 +807,12 @@
     <div class="meta-top">
         <div class="flex items-center gap-3 min-w-0">
             <div class="w-10 h-10 rounded-xl flex items-center justify-center text-[13px] font-black text-white shrink-0"
-                 style="background:linear-gradient(135deg,#e11d48,#7c3aed)">
+                 style="background:linear-gradient(135deg,#d4a053,#a07830)">
                 {{ slice .Username 0 1 }}
             </div>
             <div class="min-w-0">
                 <div class="flex items-center gap-2 flex-wrap">
-                    <a href="/channel?name={{ .Username }}" class="text-base font-black text-zinc-100 hover:text-rose-400 transition-colors">{{ .Username }}</a>
+                    <a href="/channel?name={{ .Username }}" class="text-base font-black text-zinc-100 hover:text-amber-400 transition-colors">{{ .Username }}</a>
                     {{ if .Gender }}
                     <span class="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-full {{ if eq .Gender "female" }}text-pink-400{{ else if eq .Gender "male" }}text-blue-400{{ else }}text-zinc-500{{ end }}"
                           style="{{ if eq .Gender "female" }}background:rgba(236,72,153,0.1);border:1px solid rgba(236,72,153,0.2){{ else if eq .Gender "male" }}background:rgba(59,130,246,0.1);border:1px solid rgba(59,130,246,0.2){{ else }}background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08){{ end }}">{{ .Gender }}</span>
@@ -599,7 +849,7 @@
     <div class="meta-grid">
         <div class="meta-cell">
             <div class="meta-label">Channel</div>
-            <div class="meta-value"><a href="/channel?name={{ .Username }}" class="hover:text-rose-400 transition-colors">{{ .Username }}</a></div>
+            <div class="meta-value"><a href="/channel?name={{ .Username }}" class="hover:text-amber-400 transition-colors">{{ .Username }}</a></div>
         </div>
         <div class="meta-cell">
             <div class="meta-label">Size</div>
@@ -663,7 +913,7 @@
                 {{ if .ThumbnailURL }}
                 <img src="{{ .ThumbnailURL }}" alt="" loading="lazy" />
                 {{ else }}
-                <div class="w-full h-full flex items-center justify-center" style="background:#0a0a0e">
+                <div class="w-full h-full flex items-center justify-center" style="background:var(--bg-card)">
                     <svg class="w-5 h-5 text-zinc-800" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
                         <path d="M15.75 10.5l4.72-4.72a.75.75 0 011.28.53v11.38a.75.75 0 01-1.28.53l-4.72-4.72M4.5 18.75h9a2.25 2.25 0 002.25-2.25v-9a2.25 2.25 0 00-2.25-2.25h-9A2.25 2.25 0 002.25 7.5v9a2.25 2.25 0 002.25 2.25z"/>
                     </svg>
@@ -673,8 +923,7 @@
             <div class="flex-1 min-w-0">
                 <div class="text-[12px] font-medium text-zinc-300 truncate leading-snug">{{ .Filename }}</div>
                 <div class="flex items-center gap-2 mt-1 text-[10px] text-zinc-600 flex-wrap">
-                    {{ if .ModTime }}<span>{{ .ModTime }}</span>{{ end }}
-                    {{ if .Size }}<span class="text-zinc-700">&middot;</span><span>{{ .Size }}</span>{{ end }}
+                    {{ if .Timestamp }}<span>{{ .Timestamp }}</span>{{ end }}
                 </div>
             </div>
         </div>
@@ -750,6 +999,36 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 {{ end }}
 
+// ── Server selector ──
+var currentServer = 'local';
+function toggleServerMenu() {
+    var sel = document.getElementById('server-selector');
+    if (sel) sel.classList.toggle('open');
+}
+function switchServer(serverName) {
+    var sel = document.getElementById('server-selector');
+    if (sel) sel.classList.remove('open');
+    if (serverName === currentServer) return;
+    currentServer = serverName;
+    var nameEl = document.getElementById('current-server-name');
+    if (nameEl) nameEl.textContent = serverName === 'local' ? 'Local' : serverName;
+    // Update active state
+    document.querySelectorAll('.server-option').forEach(function(opt) {
+        opt.classList.toggle('active', opt.dataset.server === serverName);
+    });
+    if (serverName === 'local') {
+        // Reload original page
+        window.location.href = '/video?path={{ .FullPath | urlquery }}';
+    } else {
+        embedHost(serverName);
+    }
+}
+// Close server menu on outside click
+document.addEventListener('click', function(e) {
+    var sel = document.getElementById('server-selector');
+    if (sel && !sel.contains(e.target)) sel.classList.remove('open');
+});
+
 // ── Theme ──
 function toggleDarkMode() { var isDark = document.documentElement.classList.toggle('dark'); localStorage.setItem('darkMode', isDark ? 'true' : 'false'); }
 function toggleTheaterMode() { var isTheater = document.documentElement.classList.toggle('theater'); localStorage.setItem('theaterMode', isTheater ? 'true' : 'false'); }
@@ -804,14 +1083,6 @@ function toggleFullscreen() {
     else if (wrapper.webkitRequestFullscreen) wrapper.webkitRequestFullscreen();
 }
 
-function onPlay() {
-    var wrapper = document.querySelector('.player-wrapper');
-    if (wrapper) wrapper.classList.remove('paused');
-    var playIcon = document.getElementById('icon-play');
-    var pauseIcon = document.getElementById('icon-pause');
-    if (playIcon) playIcon.style.display = 'none';
-    if (pauseIcon) pauseIcon.style.display = 'block';
-}
 function onPause() {
     var wrapper = document.querySelector('.player-wrapper');
     if (wrapper) wrapper.classList.add('paused');
@@ -931,6 +1202,116 @@ function copyVideoLink() {
     });
 }
 
+// ── New player features ──
+
+// Skip forward/backward
+function skipForward() {
+    var v = getVideo(); if (!v) return;
+    v.currentTime = Math.min(v.duration, v.currentTime + 10);
+    showSkipIndicator('right');
+}
+function skipBack() {
+    var v = getVideo(); if (!v) return;
+    v.currentTime = Math.max(0, v.currentTime - 10);
+    showSkipIndicator('left');
+}
+function showSkipIndicator(side) {
+    var el = document.getElementById(side === 'left' ? 'skip-back-indicator' : 'skip-fwd-indicator');
+    if (!el) return;
+    el.classList.remove('show');
+    void el.offsetWidth; // trigger reflow
+    el.classList.add('show');
+    setTimeout(function() { el.classList.remove('show'); }, 400);
+}
+
+// Loop toggle
+function toggleLoop() {
+    var v = getVideo(); if (!v) return;
+    v.loop = !v.loop;
+    var btn = document.getElementById('loop-btn');
+    if (btn) btn.classList.toggle('loop-active', v.loop);
+}
+
+// Screenshot
+function takeScreenshot() {
+    var v = getVideo(); if (!v) return;
+    var canvas = document.createElement('canvas');
+    canvas.width = v.videoWidth;
+    canvas.height = v.videoHeight;
+    canvas.getContext('2d').drawImage(v, 0, 0);
+    canvas.toBlob(function(blob) {
+        if (!blob) return;
+        navigator.clipboard.write([new ClipboardItem({'image/png': blob})]).catch(function() {
+            // Fallback: download
+            var a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = '{{ .Filename }}.png';
+            a.click();
+            URL.revokeObjectURL(a.href);
+        });
+    }, 'image/png');
+}
+
+// Speed badge
+function showSpeedBadge(speed) {
+    var badge = document.getElementById('speed-badge');
+    if (!badge) return;
+    badge.textContent = speed + 'x';
+    badge.classList.add('visible');
+    clearTimeout(badge._hideTimer);
+    badge._hideTimer = setTimeout(function() { badge.classList.remove('visible'); }, 1500);
+}
+
+// Override changeSpeed to show badge
+var _origChangeSpeed = changeSpeed;
+changeSpeed = function(s) {
+    _origChangeSpeed(s);
+    showSpeedBadge(s);
+};
+
+// Double-click to fullscreen
+document.addEventListener('DOMContentLoaded', function() {
+    var v = getVideo(); if (!v) return;
+    var clickTimer = null;
+    v.addEventListener('click', function(e) {
+        if (clickTimer) {
+            clearTimeout(clickTimer);
+            clickTimer = null;
+            toggleFullscreen();
+        } else {
+            clickTimer = setTimeout(function() {
+                clickTimer = null;
+                togglePlay();
+            }, 250);
+        }
+    });
+});
+
+// Hide poster overlay when video plays
+function onPlay() {
+    var wrapper = document.querySelector('.player-wrapper');
+    if (wrapper) wrapper.classList.remove('paused');
+    var playIcon = document.getElementById('icon-play');
+    var pauseIcon = document.getElementById('icon-pause');
+    if (playIcon) playIcon.style.display = 'none';
+    if (pauseIcon) pauseIcon.style.display = 'block';
+    var poster = document.getElementById('poster-overlay');
+    if (poster) poster.classList.add('hidden');
+}
+
+// Buffer progress
+document.addEventListener('DOMContentLoaded', function() {
+    var v = getVideo(); if (!v) return;
+    v.addEventListener('progress', function() {
+        if (v.buffered.length > 0) {
+            var buffered = v.buffered.end(v.buffered.length - 1);
+            var pct = (buffered / v.duration) * 100;
+            var buf = document.getElementById('progress-buffer');
+            if (buf) buf.style.width = pct + '%';
+        }
+    });
+});
+
 // ── Keyboard shortcuts ──
 document.addEventListener('keydown', function(e) {
     if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') return;
@@ -938,13 +1319,15 @@ document.addEventListener('keydown', function(e) {
     if (e.code === 'KeyT') { toggleTheaterMode(); return; }
     if (!v) return;
     if (e.code === 'Space') { e.preventDefault(); togglePlay(); }
-    else if (e.code === 'ArrowRight') { e.preventDefault(); v.currentTime += e.shiftKey ? 30 : 10; }
-    else if (e.code === 'ArrowLeft') { e.preventDefault(); v.currentTime -= e.shiftKey ? 30 : 10; }
+    else if (e.code === 'ArrowRight') { e.preventDefault(); skipForward(); }
+    else if (e.code === 'ArrowLeft') { e.preventDefault(); skipBack(); }
     else if (e.code === 'ArrowUp') { e.preventDefault(); v.volume = Math.min(1, v.volume + 0.1); var s = document.getElementById('volume-slider'); if (s) s.value = v.volume; }
     else if (e.code === 'ArrowDown') { e.preventDefault(); v.volume = Math.max(0, v.volume - 0.1); var s = document.getElementById('volume-slider'); if (s) s.value = v.volume; }
     else if (e.code === 'KeyF') { toggleFullscreen(); }
     else if (e.code === 'KeyM') { toggleMute(); }
     else if (e.code === 'KeyP') { togglePiP(); }
+    else if (e.code === 'KeyL') { toggleLoop(); }
+    else if (e.code === 'KeyS') { takeScreenshot(); }
 });
 </script>
 </body>

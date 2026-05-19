@@ -3,6 +3,7 @@ package uploader
 import (
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/teacat/chaturbate-dvr/server"
 )
@@ -59,17 +60,26 @@ func NewMultiImageUploader() *MultiImageUploader {
 	return &MultiImageUploader{hosts: hosts}
 }
 
-
+const (
+	imageUploadRetries    = 2
+	imageUploadBaseDelay  = 2 * time.Second
+)
 
 // Upload tries each host in order until one succeeds.
+// Retries the entire fallback chain up to imageUploadRetries times.
 func (m *MultiImageUploader) Upload(filePath string) (url, host string, err error) {
 	var lastErr error
-	for _, h := range m.hosts {
-		url, err = h.upload(filePath)
-		if err == nil {
-			return url, h.name, nil
+	for attempt := 0; attempt <= imageUploadRetries; attempt++ {
+		if attempt > 0 {
+			time.Sleep(imageUploadBaseDelay * time.Duration(1<<(attempt-1)))
 		}
-		lastErr = fmt.Errorf("%s: %w", h.name, err)
+		for _, h := range m.hosts {
+			url, err = h.upload(filePath)
+			if err == nil {
+				return url, h.name, nil
+			}
+			lastErr = fmt.Errorf("%s: %w", h.name, err)
+		}
 	}
-	return "", "", fmt.Errorf("all image hosts failed: %w", lastErr)
+	return "", "", fmt.Errorf("all image hosts failed after %d attempts: %w", imageUploadRetries+1, lastErr)
 }

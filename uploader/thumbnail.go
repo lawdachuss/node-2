@@ -24,7 +24,7 @@ type pixhostResponse struct {
 	Name    string `json:"name"`
 	ShowURL string `json:"show_url"`
 	ThURL   string `json:"th_url"`
-	ImgURL  string `json:"img_url"` // Direct image URL
+	ImgURL  string `json:"img_url"` // Direct image URL (may be empty for NSFW)
 }
 
 // NewThumbnailUploader creates a new Pixhost.to thumbnail uploader.
@@ -108,7 +108,7 @@ if werr := <-errCh; werr != nil {
 	return "", werr
 }
 
-body, err := io.ReadAll(resp.Body)
+body, err := io.ReadAll(io.LimitReader(resp.Body, 10*1024*1024)) // 10MB limit
 if err != nil {
 return "", fmt.Errorf("read response: %w", err)
 }
@@ -122,15 +122,21 @@ if err := json.Unmarshal(body, &result); err != nil {
 return "", fmt.Errorf("decode response: %w", err)
 }
 
-// Prefer direct image URL (img_url), fall back to thumbnail URL (th_url)
-// Do NOT use show_url as it's an HTML page, not an image
+// Prefer direct image URL (img_url). If empty (common for NSFW),
+// derive it from show_url by replacing /show/ with /images/.
+// Fall back to th_url only as a last resort (it's a tiny server thumbnail).
 imageURL := strings.TrimSpace(result.ImgURL)
-if imageURL == "" {
-imageURL = strings.TrimSpace(result.ThURL)
+if imageURL == "" && strings.Contains(result.ShowURL, "/show/") {
+	imageURL = strings.Replace(result.ShowURL, "/show/", "/images/", 1)
 }
 if imageURL == "" {
-return "", fmt.Errorf("Pixhost returned no image URL (response: %s)", string(body))
+	imageURL = strings.TrimSpace(result.ThURL)
 }
+if imageURL == "" {
+	return "", fmt.Errorf("Pixhost returned no image URL (response: %s)", string(body))
+}
+log.Printf("Pixhost response: img_url=%q show_url=%q th_url=%q → using %q",
+	result.ImgURL, result.ShowURL, result.ThURL, imageURL)
 
 log.Printf("Thumbnail uploaded to Pixhost: %s", imageURL)
 return imageURL, nil

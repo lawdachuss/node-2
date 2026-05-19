@@ -113,7 +113,7 @@ func (g *GitHubUploader) Upload(filePath string) (string, error) {
 	}
 	defer resp.Body.Close()
 
-	respBody, err := io.ReadAll(resp.Body)
+	respBody, err := io.ReadAll(io.LimitReader(resp.Body, 10*1024*1024)) // 10MB limit
 	if err != nil {
 		return "", fmt.Errorf("github: read response: %w", err)
 	}

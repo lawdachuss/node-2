@@ -169,7 +169,6 @@ func main() {
 		Filename:     testRecording.Filename,
 		ThumbnailURL: "https://example.com/thumb_updated.jpg",
 		SpriteURL:    "https://example.com/sprite_updated.jpg",
-		GithubPath:   "previews/test_model/thumb.jpg",
 	}
 	if err := client.SavePreviewImage(previewImg); err != nil {
 		fmt.Printf("❌ Failed to save preview image: %v\n", err)
@@ -187,7 +186,6 @@ func main() {
 	fmt.Printf("✅ Retrieved preview image:\n")
 	fmt.Printf("   - Thumbnail: %s\n", imgRetrieved.ThumbnailURL)
 	fmt.Printf("   - Sprite: %s\n", imgRetrieved.SpriteURL)
-	fmt.Printf("   - GitHub Path: %s\n\n", imgRetrieved.GithubPath)
 
 	// Test 12: Get all channels
 	fmt.Println("📋 Test 12: Get All Channels")

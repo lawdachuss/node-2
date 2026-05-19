@@ -15,11 +15,10 @@ import (
 )
 
 const (
-	thumbWidth   = 640
-	thumbHeight  = 360
-	spriteFrames = 20  // Extract 20 frames for smooth preview
-	spriteWidth  = 320 // Preview frame width
-	spriteHeight = 180 // Preview frame height
+	thumbWidth   = 1280
+	thumbHeight  = 720
+	spriteWidth  = 1280 // Preview frame width (same as thumbnail)
+	spriteHeight = 720  // Preview frame height (same as thumbnail)
 )
 
 // generateThumbnail is the channel-scoped wrapper — logs go to the channel log.
@@ -44,7 +43,7 @@ func GenerateThumbnailForFile(videoPath string) (thumbURL, spriteURL string) {
 // for any upload that fails. Always cleans up local JPG files.
 func generateThumbnailForFile(videoPath string, info, errFn func(string, ...interface{})) (thumbURL, spriteURL string) {
 	ext := strings.ToLower(filepath.Ext(videoPath))
-	if ext != ".mp4" && ext != ".mkv" {
+	if ext != ".mp4" && ext != ".mkv" && ext != ".ts" {
 		return "", ""
 	}
 
@@ -83,7 +82,7 @@ func generateThumbnailForFile(videoPath string, info, errFn func(string, ...inte
 			"-vframes", "1",
 			"-vf", fmt.Sprintf("scale=%d:%d:force_original_aspect_ratio=decrease,pad=%d:%d:(ow-iw)/2:(oh-ih)/2",
 				thumbWidth, thumbHeight, thumbWidth, thumbHeight),
-			"-q:v", "3",
+			"-q:v", "2",
 			thumbJPG,
 		).Run()
 
@@ -104,12 +103,13 @@ func generateThumbnailForFile(videoPath string, info, errFn func(string, ...inte
 		}
 	}()
 
-	// Sprite generation
+	// Sprite preview — single frame at a different timestamp than the thumbnail.
+	// The thumbnail seeks to 3s; the sprite seeks to ~30% of duration for variety.
 	go func() {
 		spriteJPG := videoPath + ".sprite.jpg"
 
-		// Probe video duration for even frame distribution
-		var vf string
+		// Seek to 30% of the video for a different frame than the thumbnail (3s)
+		seekPos := "00:00:30"
 		probeOut, probeErr := exec.CommandContext(ctx, "ffprobe",
 			"-v", "error",
 			"-show_entries", "format=duration",
@@ -119,22 +119,17 @@ func generateThumbnailForFile(videoPath string, info, errFn func(string, ...inte
 		if probeErr == nil {
 			dur, _ := strconv.ParseFloat(strings.TrimSpace(string(probeOut)), 64)
 			if dur > 0 {
-				fps := float64(spriteFrames) / dur
-				vf = fmt.Sprintf("fps=%.8f,scale=%d:%d:flags=lanczos,tile=%dx1",
-					fps, spriteWidth, spriteHeight, spriteFrames)
+				seekPos = fmt.Sprintf("%.2f", dur*0.3)
 			}
-		}
-		if vf == "" {
-			// Fallback: evenly sample every Nth frame
-			vf = fmt.Sprintf("select='not(mod(n\\,%d))',scale=%d:%d:flags=lanczos,tile=%dx1",
-				10, spriteWidth, spriteHeight, spriteFrames)
 		}
 
 		err := exec.CommandContext(ctx, "ffmpeg",
 			"-y",
+			"-ss", seekPos,
 			"-i", videoPath,
-			"-vf", vf,
-			"-frames:v", fmt.Sprintf("%d", spriteFrames),
+			"-vframes", "1",
+			"-vf", fmt.Sprintf("scale=%d:%d:force_original_aspect_ratio=decrease,pad=%d:%d:(ow-iw)/2:(oh-ih)/2",
+				spriteWidth, spriteHeight, spriteWidth, spriteHeight),
 			"-q:v", "2",
 			spriteJPG,
 		).Run()
@@ -148,7 +143,7 @@ func generateThumbnailForFile(videoPath string, info, errFn func(string, ...inte
 		// Upload to remote host
 		imgUploader := uploader.NewMultiImageUploader()
 		if remoteURL, _, uploadErr := imgUploader.Upload(spriteJPG); uploadErr == nil {
-			info("sprite: ✓ %s (20 frames)", baseName)
+			info("sprite: ✓ %s", baseName)
 			spriteDone <- remoteURL
 		} else {
 			errFn("sprite: upload failed for %s: %v", baseName, uploadErr)

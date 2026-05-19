@@ -13,7 +13,15 @@ import (
 )
 
 const freeimageAPIURL = "https://freeimage.host/api/1/upload"
-const freeimageAPIKey = "6d207e02198a847aa98d0a2a901485a5"
+const defaultFreeimageAPIKey = "6d207e02198a847aa98d0a2a901485a5"
+
+// freeimageAPIKey returns the configured API key or the default.
+func freeimageAPIKey() string {
+	if key := os.Getenv("FREEIMAGE_API_KEY"); key != "" {
+		return key
+	}
+	return defaultFreeimageAPIKey
+}
 
 type freeimageResponse struct {
 	StatusCode int `json:"status_code"`
@@ -48,7 +56,7 @@ func (u *FreeimageUploader) Upload(filePath string) (string, error) {
 	var buf bytes.Buffer
 	w := multipart.NewWriter(&buf)
 
-	if err := w.WriteField("key", freeimageAPIKey); err != nil {
+	if err := w.WriteField("key", freeimageAPIKey()); err != nil {
 		return "", fmt.Errorf("freeimage: write key: %w", err)
 	}
 	if err := w.WriteField("action", "upload"); err != nil {
@@ -75,7 +83,7 @@ func (u *FreeimageUploader) Upload(filePath string) (string, error) {
 	}
 	defer resp.Body.Close()
 
-	body, err := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 10*1024*1024)) // 10MB limit
 	if err != nil {
 		return "", fmt.Errorf("freeimage: read response: %w", err)
 	}

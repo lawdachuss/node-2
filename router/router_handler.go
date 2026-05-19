@@ -192,7 +192,7 @@ func Download(c *gin.Context) {
         c.FileAttachment(abs, filepath.Base(abs))
 }
 
-// DeleteVideo removes a video file from disk.
+// DeleteVideo removes a video file from disk and all associated data from Supabase.
 func DeleteVideo(c *gin.Context) {
         path := c.PostForm("path")
         if path == "" {
@@ -208,9 +208,20 @@ func DeleteVideo(c *gin.Context) {
                 c.Redirect(http.StatusFound, "/videos")
                 return
         }
+
+        // Extract filename for DB cleanup
+        filename := filepath.Base(abs)
+
+        // Delete file from disk
         if err := os.Remove(abs); err != nil {
-                fmt.Printf("[ERROR] delete video %s: %v\n", abs, err)
+                fmt.Printf("[ERROR] delete video file %s: %v\n", abs, err)
         }
+
+        // Delete all associated data from Supabase
+        if err := server.DeleteVideoCompletely(filename); err != nil {
+                fmt.Printf("[ERROR] delete video DB records for %s: %v\n", filename, err)
+        }
+
         c.Redirect(http.StatusFound, "/videos")
 }
 
@@ -398,6 +409,7 @@ func VideoDetail(c *gin.Context) {
                 for _, v := range recommendations {
                         related = append(related, RecordingEntry{
                                 Filename:     v.Filename,
+                                FullPath:     v.FullPath,
                                 Timestamp:    v.ModTime,
                                 RoomTitle:    v.RoomTitle,
                                 Tags:         v.Tags,
