@@ -20,4 +20,6 @@ type IManager interface {
         SaveConfig() error
         StartCookieRefresher()
         WaitForUploads()
+        StopAllChannels()
+        WaitForAllChannels()
 }

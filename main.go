@@ -6,6 +6,7 @@ import (
         "os"
         "os/signal"
         "syscall"
+        "time"
 
         "github.com/teacat/chaturbate-dvr/config"
         "github.com/teacat/chaturbate-dvr/entity"
@@ -159,54 +160,54 @@ func main() {
                                 EnvVars: []string{"SENDCM_API_KEY"},
                                 Value:   "",
                         },
-			&cli.StringFlag{
-				Name:    "byse-api-key",
-				Usage:   "API key for Byse uploads",
-				EnvVars: []string{"BYSE_API_KEY"},
-				Value:   "",
-			},
-			&cli.StringFlag{
-				Name:    "github-token",
-				Usage:   "GitHub Personal Access Token for preview/sprite image uploads",
-				EnvVars: []string{"GITHUB_TOKEN"},
-				Value:   "",
-			},
-			&cli.StringFlag{
-				Name:    "github-repo",
-				Usage:   "GitHub repository for preview images (owner/repo)",
-				EnvVars: []string{"GITHUB_REPO"},
-				Value:   "",
-			},
-			&cli.StringFlag{
-				Name:    "github-branch",
-				Usage:   "GitHub branch for preview images (default: main)",
-				EnvVars: []string{"GITHUB_BRANCH"},
-				Value:   "main",
-			},
-			&cli.StringFlag{
-				Name:    "github-preview-path",
-				Usage:   "Path in GitHub repo for preview images (default: previews)",
-				EnvVars: []string{"GITHUB_PREVIEW_PATH"},
-				Value:   "previews",
-			},
-			&cli.StringFlag{
-				Name:    "flaresolverr-url",
-				Usage:   "URL of the Byparr/FlareSolverr instance for automatic Cloudflare bypass",
-				EnvVars: []string{"FLARESOLVERR_URL"},
-				Value:   "",
-			},
-			&cli.StringFlag{
-				Name:    "supabase-url",
-				Usage:   "Supabase project URL for remote data persistence (REST API fallback)",
-				EnvVars: []string{"SUPABASE_URL"},
-				Value:   "",
-			},
-			&cli.StringFlag{
-				Name:    "supabase-api-key",
-				Usage:   "Supabase anon/public API key for REST API fallback",
-				EnvVars: []string{"SUPABASE_API_KEY"},
-				Value:   "",
-			},
+                        &cli.StringFlag{
+                                Name:    "byse-api-key",
+                                Usage:   "API key for Byse uploads",
+                                EnvVars: []string{"BYSE_API_KEY"},
+                                Value:   "",
+                        },
+                        &cli.StringFlag{
+                                Name:    "github-token",
+                                Usage:   "GitHub Personal Access Token for preview/sprite image uploads",
+                                EnvVars: []string{"GITHUB_TOKEN"},
+                                Value:   "",
+                        },
+                        &cli.StringFlag{
+                                Name:    "github-repo",
+                                Usage:   "GitHub repository for preview images (owner/repo)",
+                                EnvVars: []string{"GITHUB_REPO"},
+                                Value:   "",
+                        },
+                        &cli.StringFlag{
+                                Name:    "github-branch",
+                                Usage:   "GitHub branch for preview images (default: main)",
+                                EnvVars: []string{"GITHUB_BRANCH"},
+                                Value:   "main",
+                        },
+                        &cli.StringFlag{
+                                Name:    "github-preview-path",
+                                Usage:   "Path in GitHub repo for preview images (default: previews)",
+                                EnvVars: []string{"GITHUB_PREVIEW_PATH"},
+                                Value:   "previews",
+                        },
+                        &cli.StringFlag{
+                                Name:    "flaresolverr-url",
+                                Usage:   "URL of the Byparr/FlareSolverr instance for automatic Cloudflare bypass",
+                                EnvVars: []string{"FLARESOLVERR_URL"},
+                                Value:   "",
+                        },
+                        &cli.StringFlag{
+                                Name:    "supabase-url",
+                                Usage:   "Supabase project URL for remote data persistence (REST API fallback)",
+                                EnvVars: []string{"SUPABASE_URL"},
+                                Value:   "",
+                        },
+                        &cli.StringFlag{
+                                Name:    "supabase-api-key",
+                                Usage:   "Supabase anon/public API key for REST API fallback",
+                                EnvVars: []string{"SUPABASE_API_KEY"},
+                                Value:   "",
+                        },
                 },
                 Action: start,
         }
@@ -241,15 +242,49 @@ func start(c *cli.Context) error {
                 // fresh cf_clearance cookies automatically.
                 server.Manager.StartCookieRefresher()
 
-                // Graceful shutdown: catch SIGTERM/SIGINT and wait for in-flight
-                // uploads to finish before exiting so recordings are not lost.
+                // Graceful shutdown: catch SIGTERM/SIGINT, stop all recording
+                // channels first (so their Cleanup() runs and queues files into
+                // UploadWg), then wait for post-processing + uploads + Supabase
+                // saves to finish before exiting.  A progress ticker logs every
+                // 30 s so the GitHub Actions log shows the process is still alive.
                 go func() {
                         sigCh := make(chan os.Signal, 1)
                         signal.Notify(sigCh, syscall.SIGTERM, syscall.SIGINT)
                         <-sigCh
-                        fmt.Println("\n shutting down — waiting for in-flight uploads to finish...")
+
+                        channels := server.Manager.ChannelInfo()
+                        fmt.Printf("\n[SHUTDOWN] received signal — stopping %d channel(s)...\n", len(channels))
+                        for _, ch := range channels {
+                                fmt.Printf("[SHUTDOWN]   stopping %s\n", ch.Username)
+                        }
+
+                        server.Manager.StopAllChannels()
+                        fmt.Println("[SHUTDOWN] all channels stopped — waiting for mux/thumbnail/upload/Supabase to finish...")
+                        fmt.Println("[SHUTDOWN] DO NOT kill this process — recordings will be lost if interrupted")
+
+                        // Progress ticker: log every 30 s so CI logs show we are alive
+                        shutdownDone := make(chan struct{})
+                        go func() {
+                                ticker := time.NewTicker(30 * time.Second)
+                                defer ticker.Stop()
+                                elapsed := 30
+                                for {
+                                        select {
+                                        case <-ticker.C:
+                                                fmt.Printf("[SHUTDOWN] still finalizing... (%ds elapsed — waiting for uploads and Supabase saves)\n", elapsed)
+                                                elapsed += 30
+                                        case <-shutdownDone:
+                                                return
+                                        }
+                                }
+                        }()
+
+                        server.Manager.WaitForAllChannels()
+                        fmt.Println("[SHUTDOWN] all recordings finalized — waiting for uploads and Supabase saves...")
                         server.Manager.WaitForUploads()
-                        fmt.Println(" all uploads completed, exiting")
+
+                        close(shutdownDone)
+                        fmt.Println("[SHUTDOWN] all uploads and Supabase saves complete — exiting cleanly")
                         os.Exit(0)
                 }()
 

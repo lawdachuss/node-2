@@ -63,6 +63,7 @@ type Channel struct {
         cleanupMu        sync.Mutex // serialises Cleanup() calls from concurrent goroutines
         pendingFiles     []pendingFile
         UploadWg         sync.WaitGroup // tracks in-flight upload goroutines for graceful shutdown
+        monitorWg        sync.WaitGroup // tracks the Monitor goroutine lifetime
 }
 
 // New creates a new channel instance with the given manager and configuration.
@@ -213,8 +214,21 @@ func (ch *Channel) Resume(startSeq int) {
         ch.Update()
         ch.Info("channel resumed")
 
-        <-time.After(time.Duration(startSeq) * time.Second)
-        go ch.Monitor()
+        ch.monitorWg.Add(1)
+        go func() {
+                defer ch.monitorWg.Done()
+                if startSeq > 0 {
+                        <-time.After(time.Duration(startSeq) * time.Second)
+                }
+                ch.Monitor()
+        }()
+}
+
+// WaitMonitor blocks until the Monitor goroutine has fully exited.
+// By the time it returns, Cleanup() has already run and any pending
+// files have been queued into UploadWg.
+func (ch *Channel) WaitMonitor() {
+        ch.monitorWg.Wait()
 }
 
 // UpdateOnlineStatus updates the online status of the channel.

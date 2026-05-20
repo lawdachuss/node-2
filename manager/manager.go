@@ -271,6 +271,27 @@ func (m *Manager) WaitForUploads() {
         })
 }
 
+// StopAllChannels cancels all active channel Monitor goroutines without
+// removing them from the map. Used during graceful shutdown so recordings
+// can be finalized and uploaded before the process exits.
+func (m *Manager) StopAllChannels() {
+        m.Channels.Range(func(key, value any) bool {
+                value.(*channel.Channel).Stop()
+                return true
+        })
+}
+
+// WaitForAllChannels blocks until every channel's Monitor goroutine has
+// fully exited. By the time this returns, Cleanup() has run for each
+// channel, meaning all pending files have been queued into UploadWg.
+// Always call this before WaitForUploads() during graceful shutdown.
+func (m *Manager) WaitForAllChannels() {
+        m.Channels.Range(func(key, value any) bool {
+                value.(*channel.Channel).WaitMonitor()
+                return true
+        })
+}
+
 // PauseChannel pauses the channel and synchronously persists the state.
 func (m *Manager) PauseChannel(username string) error {
         thing, ok := m.Channels.Load(username)
