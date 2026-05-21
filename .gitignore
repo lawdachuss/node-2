@@ -28,6 +28,7 @@ database/*
 !database/settings.json
 !database/tunnel.json
 !database/supabase.go
+!database/migrate.sql
 
 # AWS secrets and keys
 aws-secrets/
