@@ -81,6 +81,12 @@
             overflow: hidden;
             cursor: pointer;
             position: relative;
+            transition: border-color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
+        }
+        .video-card:hover {
+            border-color: rgba(212,160,83,0.22);
+            transform: translateY(-2px);
+            box-shadow: 0 16px 48px rgba(0,0,0,0.45), 0 0 0 1px rgba(212,160,83,0.08);
         }
 
         /* ── Thumbnail area ── */
@@ -113,6 +119,7 @@
             opacity: 0;
             z-index: 2;
             transition: opacity 0.15s;
+            pointer-events: none;
         }
         .video-card:hover .sprite-overlay { opacity: 1; }
         .sprite-anim {
@@ -310,6 +317,18 @@
 <!-- ═══ CONTENT ═══ -->
 <div class="max-w-screen-xl mx-auto px-5 py-8">
 
+    {{ if .TagFilter }}
+    <div class="flex items-center gap-3 mb-8 p-4 rounded-2xl" style="background:rgba(139,92,246,0.06);border:1px solid rgba(139,92,246,0.15)">
+        <svg class="w-4 h-4 shrink-0" style="color:#a78bfa" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M7 20l4-16m2 16l4-16M6 9h14M4 15h14"/></svg>
+        <span class="text-sm font-medium" style="color:#a78bfa">Filtered by tag: <strong>{{ .TagFilter }}</strong></span>
+        <span class="text-xs text-zinc-600 ml-1">{{ len .Videos }} result{{ if ne (len .Videos) 1 }}s{{ end }}</span>
+        <a href="/videos" class="ml-auto text-xs text-zinc-500 hover:text-zinc-300 transition-colors flex items-center gap-1">
+            <svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12"/></svg>
+            Clear filter
+        </a>
+    </div>
+    {{ end }}
+
     {{ if not .Videos }}
     <div class="flex flex-col items-center justify-center py-40">
         <div class="empty-icon mb-6">
@@ -339,6 +358,7 @@
                  data-filename="{{ .Filename }}"
                  data-username="{{ .Username }}"
                  data-sprite="{{ .SpriteURL }}"
+                 data-tags="{{ range .Tags }}{{ . }} {{ end }}"
                  data-video-href="{{ if .FullPath }}/video?path={{ .FullPath | urlquery }}{{ else }}/video?path={{ .Filename | urlquery }}{{ end }}"
                  onclick="location.href=this.dataset.videoHref">
                 <div class="card-thumb">
@@ -349,9 +369,7 @@
                         <svg class="w-10 h-10 text-zinc-800" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M15.75 10.5l4.72-4.72a.75.75 0 011.28.53v11.38a.75.75 0 01-1.28.53l-4.72-4.72M4.5 18.75h9a2.25 2.25 0 002.25-2.25v-9a2.25 2.25 0 00-2.25-2.25h-9A2.25 2.25 0 002.25 7.5v9a2.25 2.25 0 002.25 2.25z"/></svg>
                     </div>
                     {{ end }}
-                    {{ if .FullPath }}
                     <div class="play-btn-wrap"><div class="play-btn"><svg fill="currentColor" viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21"/></svg></div></div>
-                    {{ end }}
                     <div class="card-badges">
                         <div class="flex flex-wrap gap-1">
                             {{ if .Resolution }}<span class="badge badge-res">{{ .Resolution }}</span>{{ end }}
@@ -373,11 +391,21 @@
                     {{ if .RoomTitle }}<div class="card-room-title" title="{{ .RoomTitle }}">{{ .RoomTitle }}</div>{{ end }}
                     <div class="card-subtitle" title="{{ .Filename }}">{{ .Filename }}</div>
                     {{ if .Tags }}
-                    <div class="flex flex-wrap gap-1 mt-2.5">{{ range .Tags }}<span class="tag-badge">{{ . }}</span>{{ end }}</div>
+                    <div class="flex flex-wrap gap-1 mt-2.5">{{ range .Tags }}<a href="/videos?tag={{ . | urlquery }}" onclick="event.stopPropagation()" class="tag-badge">{{ . }}</a>{{ end }}</div>
                     {{ end }}
-                    {{ if .Links }}
+                    {{ if or .Links (not .FullPath) }}
                     <div class="flex items-center gap-1.5 mt-3 pt-3" style="border-top:1px solid rgba(255,255,255,0.04)">
                         {{ range $host, $link := .Links }}<a href="{{ $link }}" target="_blank" rel="noopener" onclick="event.stopPropagation()" class="host-badge">{{ $host }}</a>{{ end }}
+                        {{ if not .FullPath }}
+                        <div class="ml-auto">
+                            <form action="/delete_video_db" method="POST" onsubmit="return confirm('Remove record for {{ .Filename | js }}?')" onclick="event.stopPropagation()">
+                                <input type="hidden" name="filename" value="{{ .Filename }}" />
+                                <button type="submit" class="delete-btn" title="Remove record">
+                                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
+                                </button>
+                            </form>
+                        </div>
+                        {{ end }}
                     </div>
                     {{ end }}
                 </div>
@@ -420,6 +448,7 @@
                  data-filename="{{ .Filename }}"
                  data-username="{{ .Username }}"
                  data-sprite="{{ .SpriteURL }}"
+                 data-tags="{{ range .Tags }}{{ . }} {{ end }}"
                  data-video-href="{{ if .FullPath }}/video?path={{ .FullPath | urlquery }}{{ else }}/video?path={{ .Filename | urlquery }}{{ end }}"
                  onclick="location.href=this.dataset.videoHref">
 
@@ -443,14 +472,12 @@
                     </div>
                     {{ end }}
 
-                    <!-- Play button -->
-                    {{ if .FullPath }}
+                    <!-- Play button (always visible on hover) -->
                     <div class="play-btn-wrap">
                         <div class="play-btn">
                             <svg fill="currentColor" viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21"/></svg>
                         </div>
                     </div>
-                    {{ end }}
 
                     <!-- Badges -->
                     <div class="card-badges">
@@ -484,10 +511,10 @@
                     <div class="card-subtitle" title="{{ .Filename }}">{{ .Filename }}</div>
                     {{ if .Tags }}
                     <div class="flex flex-wrap gap-1 mt-2.5">
-                        {{ range .Tags }}<span class="tag-badge">{{ . }}</span>{{ end }}
+                        {{ range .Tags }}<a href="/videos?tag={{ . | urlquery }}" onclick="event.stopPropagation()" class="tag-badge">{{ . }}</a>{{ end }}
                     </div>
                     {{ end }}
-                    {{ if or .Links (and .FullPath (not .IsOutputDir)) }}
+                    {{ if or .Links (and .FullPath (not .IsOutputDir)) (not .FullPath) }}
                     <div class="flex items-center gap-1.5 mt-3 pt-3" style="border-top:1px solid rgba(255,255,255,0.04)">
                         {{ range $host, $link := .Links }}
                         <a href="{{ $link }}" target="_blank" rel="noopener" onclick="event.stopPropagation()" class="host-badge">{{ $host }}</a>
@@ -496,7 +523,16 @@
                         <div class="ml-auto">
                             <form action="/delete_video" method="POST" onsubmit="return confirm('Delete {{ .Filename | js }}?')" onclick="event.stopPropagation()">
                                 <input type="hidden" name="path" value="{{ .FullPath }}" />
-                                <button type="submit" class="delete-btn">
+                                <button type="submit" class="delete-btn" title="Delete file">
+                                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
+                                </button>
+                            </form>
+                        </div>
+                        {{ else if not .FullPath }}
+                        <div class="ml-auto">
+                            <form action="/delete_video_db" method="POST" onsubmit="return confirm('Remove record for {{ .Filename | js }}?')" onclick="event.stopPropagation()">
+                                <input type="hidden" name="filename" value="{{ .Filename }}" />
+                                <button type="submit" class="delete-btn" title="Remove record">
                                     <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
                                 </button>
                             </form>
@@ -542,7 +578,7 @@ function filterSearch(q) {
     _searchTimer = setTimeout(function() {
         var query = q.toLowerCase();
         document.querySelectorAll('[data-filename]').forEach(function(card) {
-            var text = (card.dataset.filename + ' ' + (card.dataset.username || '')).toLowerCase();
+            var text = (card.dataset.filename + ' ' + (card.dataset.username || '') + ' ' + (card.dataset.tags || '')).toLowerCase();
             card.style.display = (!query || text.includes(query)) ? '' : 'none';
         });
     }, 180);
