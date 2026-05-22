@@ -110,57 +110,57 @@ func fetchAPIResponse(ctx context.Context, client *internal.Req, username string
 // If roomInfo is non-nil, it is populated with room metadata from the response.
 // Retries up to 3 times with a shared 250s timeout budget to handle transient Byparr failures.
 func tryFlareSolverrStream(ctx context.Context, username, reason string, roomInfo *APIResponse) (*Stream, string, error) {
-	fmt.Printf("[INFO] %s for %s, trying FlareSolverr/Byparr fallback...\n", reason, username)
+        fmt.Printf("[INFO] %s for %s, trying FlareSolverr/Byparr fallback...\n", reason, username)
 
-	deadline, hasDeadline := ctx.Deadline()
-	var budget time.Duration
-	if hasDeadline {
-		budget = time.Until(deadline)
-	}
-	if budget <= 0 || budget > 250*time.Second {
-		budget = 250 * time.Second
-	}
+        deadline, hasDeadline := ctx.Deadline()
+        var budget time.Duration
+        if hasDeadline {
+                budget = time.Until(deadline)
+        }
+        if budget <= 0 || budget > 250*time.Second {
+                budget = 250 * time.Second
+        }
 
-	const maxAttempts = 3
-	var lastErr error
-	for attempt := range maxAttempts {
-		perAttempt := budget / time.Duration(maxAttempts-attempt)
-		attemptCtx, cancel := context.WithTimeout(ctx, perAttempt)
+        const maxAttempts = 3
+        var lastErr error
+        for attempt := range maxAttempts {
+                perAttempt := budget / time.Duration(maxAttempts-attempt)
+                attemptCtx, cancel := context.WithTimeout(ctx, perAttempt)
 
-		var fsRoomInfo internal.StreamAPIBody
-		roomInfoPtr := &fsRoomInfo
-		if roomInfo == nil {
-			roomInfoPtr = nil
-		}
+                var fsRoomInfo internal.StreamAPIBody
+                roomInfoPtr := &fsRoomInfo
+                if roomInfo == nil {
+                        roomInfoPtr = nil
+                }
 
-		hlsURL, status, err := internal.FetchStreamViaFlareSolverr(attemptCtx, username, roomInfoPtr)
-		cancel()
-		if err == nil {
-			if roomInfo != nil && roomInfoPtr != nil {
-				roomInfo.RoomTitle = roomInfoPtr.RoomTitle
-				roomInfo.Tags = roomInfoPtr.Tags
-				roomInfo.NumUsers = roomInfoPtr.NumUsers
-			}
-			fmt.Printf("[SUCCESS] FlareSolverr/Byparr obtained stream info for %s\n", username)
-			if status == "private" {
-				return nil, status, internal.ErrPrivateStream
-			}
-			if status == "offline" || hlsURL == "" {
-				return nil, status, internal.ErrChannelOffline
-			}
-			return &Stream{HLSSource: hlsURL}, status, nil
-		}
-		lastErr = err
-		if attempt < maxAttempts-1 {
-			fmt.Printf("[WARN] FlareSolverr attempt %d/%d for %s failed: %v\n", attempt+1, maxAttempts, username, err)
-			select {
-			case <-ctx.Done():
-				return nil, "", ctx.Err()
-			case <-time.After(3 * time.Second):
-			}
-		}
-	}
-	return nil, "", lastErr
+                hlsURL, status, err := internal.FetchStreamViaFlareSolverr(attemptCtx, username, roomInfoPtr)
+                cancel()
+                if err == nil {
+                        if roomInfo != nil && roomInfoPtr != nil {
+                                roomInfo.RoomTitle = roomInfoPtr.RoomTitle
+                                roomInfo.Tags = roomInfoPtr.Tags
+                                roomInfo.NumUsers = roomInfoPtr.NumUsers
+                        }
+                        fmt.Printf("[SUCCESS] FlareSolverr/Byparr obtained stream info for %s\n", username)
+                        if status == "private" {
+                                return nil, status, internal.ErrPrivateStream
+                        }
+                        if status == "offline" || hlsURL == "" {
+                                return nil, status, internal.ErrChannelOffline
+                        }
+                        return &Stream{HLSSource: hlsURL}, status, nil
+                }
+                lastErr = err
+                if attempt < maxAttempts-1 {
+                        fmt.Printf("[WARN] FlareSolverr attempt %d/%d for %s failed: %v\n", attempt+1, maxAttempts, username, err)
+                        select {
+                        case <-ctx.Done():
+                                return nil, "", ctx.Err()
+                        case <-time.After(3 * time.Second):
+                        }
+                }
+        }
+        return nil, "", lastErr
 }
 
 // FetchStream retrieves the streaming data using the Chaturbate API.
@@ -238,40 +238,40 @@ func FetchStream(ctx context.Context, client *internal.Req, username string, roo
                 return nil, "", fmt.Errorf("failed to parse POST API response: %w", err)
         }
 
-	// Cache room metadata from POST API
-	if roomInfo != nil {
-		roomInfo.RoomTitle = resp.RoomTitle
-		roomInfo.Tags = resp.Tags
-		roomInfo.NumUsers = resp.NumUsers
-	}
+        // Cache room metadata from POST API
+        if roomInfo != nil {
+                roomInfo.RoomTitle = resp.RoomTitle
+                roomInfo.Tags = resp.Tags
+                roomInfo.NumUsers = resp.NumUsers
+        }
 
-	// Enrich metadata from the GET API (chatvideocontext) which reliably
-	// returns tags, room_title, and num_users even when the POST endpoint
-	// only returns the HLS URL.
-	if getResp, getErr := fetchAPIResponse(ctx, client, username); getErr == nil {
-		if roomInfo != nil {
-			if getResp.RoomTitle != "" {
-				roomInfo.RoomTitle = getResp.RoomTitle
-			}
-			if len(getResp.Tags) > 0 {
-				roomInfo.Tags = getResp.Tags
-			}
-			if getResp.NumUsers > 0 {
-				roomInfo.NumUsers = getResp.NumUsers
-			}
-		}
-		if resp.RoomStatus == "" && getResp.RoomStatus != "" {
-			resp.RoomStatus = getResp.RoomStatus
-		}
-	}
+        // Enrich metadata from the GET API (chatvideocontext) which reliably
+        // returns tags, room_title, and num_users even when the POST endpoint
+        // only returns the HLS URL.
+        if getResp, getErr := fetchAPIResponse(ctx, client, username); getErr == nil {
+                if roomInfo != nil {
+                        if getResp.RoomTitle != "" {
+                                roomInfo.RoomTitle = getResp.RoomTitle
+                        }
+                        if len(getResp.Tags) > 0 {
+                                roomInfo.Tags = getResp.Tags
+                        }
+                        if getResp.NumUsers > 0 {
+                                roomInfo.NumUsers = getResp.NumUsers
+                        }
+                }
+                if resp.RoomStatus == "" && getResp.RoomStatus != "" {
+                        resp.RoomStatus = getResp.RoomStatus
+                }
+        }
 
-	// Handle room status
-	switch resp.RoomStatus {
-	case StatusPrivate:
-		return nil, resp.RoomStatus, internal.ErrPrivateStream
-	case StatusAway, StatusOffline:
-		return nil, resp.RoomStatus, internal.ErrChannelOffline
-	}
+        // Handle room status
+        switch resp.RoomStatus {
+        case StatusPrivate:
+                return nil, resp.RoomStatus, internal.ErrPrivateStream
+        case StatusAway, StatusOffline:
+                return nil, resp.RoomStatus, internal.ErrChannelOffline
+        }
 
         // If POST API returned a public room but no HLS source, fall back to GET API.
         // This happens when Chaturbate requires cookies/auth for the POST endpoint.
@@ -522,9 +522,20 @@ func (p *Playlist) WatchAVSegments(ctx context.Context, handler WatchHandler, in
                 initWritten      = false
                 audioLastSeq     = -1
                 audioInitWritten = false
+
+                // Stall detection: count consecutive poll cycles where lastSeq does not
+                // advance.  After maxStalledPolls cycles we return ErrStreamStalled so the
+                // caller (Monitor) can finalise the current file and re-fetch a fresh HLS
+                // URL with a new CDN session token.  Only start counting once we have
+                // recorded at least one segment (lastSeq >= 0) so we don't trigger on the
+                // very first poll before any segments are available on the live edge.
+                stalledPolls    = 0
+                maxStalledPolls = 5
         )
 
         for {
+                prevLastSeq := lastSeq
+
                 pollInterval, err := p.processMediaPlaylist(ctx, client, p.PlaylistURL, handler, initHandler, &lastSeq, &initWritten)
                 if err != nil {
                         return fmt.Errorf("video: %w", err)
@@ -541,6 +552,17 @@ func (p *Playlist) WatchAVSegments(ctx context.Context, handler WatchHandler, in
                         if err := pollComplete(); err != nil {
                                 return fmt.Errorf("poll complete: %w", err)
                         }
+                }
+
+                // Stall detection: if we have started recording (lastSeq >= 0) but
+                // made no progress this cycle, increment the stall counter.
+                if lastSeq >= 0 && lastSeq == prevLastSeq {
+                        stalledPolls++
+                        if stalledPolls >= maxStalledPolls {
+                                return internal.ErrStreamStalled
+                        }
+                } else {
+                        stalledPolls = 0
                 }
 
                 // Use the playlist's target duration as the polling interval (minimum 2s)
@@ -630,7 +652,21 @@ func (p *Playlist) processMediaPlaylist(ctx context.Context, client *internal.Re
                         retry.DelayType(retry.FixedDelay),
                 )
                 if err != nil {
-                        break
+                        // Return the error instead of silently breaking.
+                        //
+                        // The old `break` caused recordings to freeze permanently:
+                        // when CDN session tokens expire (typically every few minutes
+                        // on LL-HLS streams) every segment download fails, the break
+                        // exited the inner loop, processMediaPlaylist returned nil,
+                        // and WatchAVSegments looped forever writing nothing — producing
+                        // only small 10-200 MB recordings for long-running streams.
+                        //
+                        // Returning the error propagates it through WatchAVSegments →
+                        // RecordStream → Monitor.onRetry, which finalises the current
+                        // file and re-fetches a fresh HLS URL (new session token) so
+                        // recording resumes.  Cloudflare errors are preserved via %w
+                        // so the CF-specific backoff in onRetry still applies correctly.
+                        return 0, fmt.Errorf("segment seq=%d: %w", seq, err)
                 }
                 if handler != nil {
                         if err := handler(resp, v.Duration); err != nil {

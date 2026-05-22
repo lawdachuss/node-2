@@ -61,6 +61,12 @@ func (ch *Channel) Monitor() {
                                                 }
                                         }()
                                 }
+                        } else if errors.Is(err, internal.ErrStreamStalled) {
+                                // CDN session expired mid-stream (common with LL-HLS tokens).
+                                // The current file has already been finalised by the deferred
+                                // Cleanup in RecordStream.  Just re-fetch a fresh HLS URL.
+                                cfBlockCount = 0
+                                ch.Info("stream stalled (CDN session expired) — re-fetching fresh URL in %d min(s)", server.Config.Interval)
                         } else if errors.Is(err, context.Canceled) {
                                 cfBlockCount = 0
                         } else {
