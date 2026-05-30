@@ -37,6 +37,10 @@ env:
   SENDCM_API_KEY: ${{ secrets.SENDCM_API_KEY }}
   GOFILE_API_KEY: ${{ secrets.GOFILE_API_KEY }}
   BYSE_API_KEY: ${{ secrets.BYSE_API_KEY }}
+  STREAMTAPE_LOGIN: ${{ secrets.STREAMTAPE_LOGIN }}
+  STREAMTAPE_KEY: ${{ secrets.STREAMTAPE_KEY }}
+  MIXDROP_EMAIL: ${{ secrets.MIXDROP_EMAIL }}
+  MIXDROP_TOKEN: ${{ secrets.MIXDROP_TOKEN }}
   PROXY_SERVER: ${{ secrets.PROXY_SERVER }}
   PROXY_USERNAME: ${{ secrets.PROXY_USERNAME }}
   PROXY_PASSWORD: ${{ secrets.PROXY_PASSWORD }}

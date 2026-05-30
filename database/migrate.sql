@@ -14,14 +14,13 @@
 CREATE SCHEMA IF NOT EXISTS public;
 SET search_path TO public;
 
--- Enable UUID extension if not already enabled
-CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+-- gen_random_uuid() is built-in since PostgreSQL 13; no extension needed.
 
 -- ============================================================================
 -- 1. CHANNELS TABLE
 -- ============================================================================
 CREATE TABLE IF NOT EXISTS channels (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     username VARCHAR(255) UNIQUE NOT NULL,
     is_paused BOOLEAN DEFAULT FALSE,
     framerate INTEGER DEFAULT 30,
@@ -41,7 +40,7 @@ CREATE INDEX IF NOT EXISTS idx_channels_created_at ON channels(created_at);
 -- 2. RECORDINGS TABLE
 -- ============================================================================
 CREATE TABLE IF NOT EXISTS recordings (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     channel_id UUID REFERENCES channels(id) ON DELETE CASCADE,
     username VARCHAR(255) NOT NULL,
     filename VARCHAR(500) UNIQUE NOT NULL,
@@ -70,7 +69,7 @@ CREATE INDEX IF NOT EXISTS idx_recordings_gender ON recordings(gender);
 -- 3. UPLOAD_LINKS TABLE
 -- ============================================================================
 CREATE TABLE IF NOT EXISTS upload_links (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     recording_id UUID REFERENCES recordings(id) ON DELETE CASCADE,
     host VARCHAR(100) NOT NULL,
     url TEXT NOT NULL,
@@ -93,7 +92,7 @@ CREATE TABLE IF NOT EXISTS app_settings (
 -- 5. TUNNELS TABLE (used by Go code)
 -- ============================================================================
 CREATE TABLE IF NOT EXISTS tunnels (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     url TEXT NOT NULL,
     run_id INTEGER,
     is_active BOOLEAN DEFAULT TRUE,
@@ -118,7 +117,7 @@ CREATE INDEX IF NOT EXISTS idx_upload_links_instance ON upload_links(instance_id
 -- 6. TUNNEL_SESSIONS TABLE (used by GitHub Actions workflow)
 -- ============================================================================
 CREATE TABLE IF NOT EXISTS tunnel_sessions (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     run_id INTEGER NOT NULL,
     url TEXT NOT NULL,
     started_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
@@ -137,7 +136,7 @@ CREATE INDEX IF NOT EXISTS idx_tunnel_sessions_active ON tunnel_sessions(is_acti
 -- 7. CHANNEL_LOGS TABLE
 -- ============================================================================
 CREATE TABLE IF NOT EXISTS channel_logs (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     channel_id UUID REFERENCES channels(id) ON DELETE CASCADE,
     username VARCHAR(255) NOT NULL,
     log_level VARCHAR(20) NOT NULL,
@@ -153,7 +152,7 @@ CREATE INDEX IF NOT EXISTS idx_channel_logs_created_at ON channel_logs(created_a
 -- 8. RECORDING_SESSIONS TABLE
 -- ============================================================================
 CREATE TABLE IF NOT EXISTS recording_sessions (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     channel_id UUID REFERENCES channels(id) ON DELETE CASCADE,
     username VARCHAR(255) NOT NULL,
     started_at TIMESTAMP WITH TIME ZONE NOT NULL,
@@ -173,7 +172,7 @@ CREATE INDEX IF NOT EXISTS idx_recording_sessions_started_at ON recording_sessio
 -- 9. PREVIEW_IMAGES TABLE
 -- ============================================================================
 CREATE TABLE IF NOT EXISTS preview_images (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     recording_id UUID REFERENCES recordings(id) ON DELETE CASCADE,
     filename VARCHAR(500) NOT NULL,
     thumbnail_url TEXT,
@@ -190,7 +189,7 @@ CREATE INDEX IF NOT EXISTS idx_preview_images_filename ON preview_images(filenam
 -- 10. DISK_USAGE TABLE
 -- ============================================================================
 CREATE TABLE IF NOT EXISTS disk_usage (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     total_bytes BIGINT NOT NULL,
     used_bytes BIGINT NOT NULL,
     free_bytes BIGINT NOT NULL,

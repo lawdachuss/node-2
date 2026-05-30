@@ -101,10 +101,6 @@ func (ch *Channel) Cleanup(isRotation bool) error {
                 ch.Info("cleanup: queued %s for post-processing (%d pending)", filepath.Base(videoPath), len(ch.pendingFiles))
         }
 
-        if isRotation {
-                return nil
-        }
-
         ch.processPendingQueue()
         return nil
 }
@@ -607,6 +603,10 @@ func uploadOrphanedFile(filePath, thumbURL, spriteURL string) bool {
                 cfg.VoeSXAPIKey,
                 cfg.SendCMAPIKey,
                 cfg.ByseAPIKey,
+                cfg.StreamtapeLogin,
+                cfg.StreamtapeKey,
+                cfg.MixdropEmail,
+                cfg.MixdropToken,
                 nil, // no logger for orphan recovery
         )
 

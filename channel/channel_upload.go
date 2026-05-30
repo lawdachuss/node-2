@@ -11,25 +11,29 @@ import (
 )
 
 func embedURLFromLink(host, link string) string {
-	if link == "" {
-		return ""
-	}
+        if link == "" {
+                return ""
+        }
 
-	switch host {
-	case "VOE.sx", "VoeSX":
-		code := link[strings.LastIndex(link, "/")+1:]
-		if code != "" {
-			return "https://voe.sx/e/" + code
-		}
-	case "Byse":
-		code := link[strings.LastIndex(link, "/")+1:]
-		if code != "" {
-			return "https://filemoon.sx/e/" + code
-		}
-	case "SendCM":
-		return link
-	}
-	return ""
+        switch host {
+        case "VOE.sx", "VoeSX":
+                code := link[strings.LastIndex(link, "/")+1:]
+                if code != "" {
+                        return "https://voe.sx/e/" + code
+                }
+        case "Byse":
+                code := link[strings.LastIndex(link, "/")+1:]
+                if code != "" {
+                        return "https://filemoon.sx/e/" + code
+                }
+        case "SendCM":
+                return link
+        case "Streamtape":
+                return link
+        case "Mixdrop":
+                return link
+        }
+        return ""
 }
 
 // uploadFile uploads the given file to all configured hosts.
@@ -45,14 +49,18 @@ func (ch *Channel) uploadFile(filePath string, thumbURL, spriteURL string) bool 
         filename := filepath.Base(filePath)
         ch.Info("upload: starting upload of %s", filename)
 
-	// Create the uploader with the channel as its logger
-	upl := uploader.NewMultiHostUploader(
-		cfg.TurboViPlayAPIKey,
-		cfg.VoeSXAPIKey,
-		cfg.SendCMAPIKey,
-		cfg.ByseAPIKey,
-		ch, // Channel implements uploader.Logger
-	)
+        // Create the uploader with the channel as its logger
+        upl := uploader.NewMultiHostUploader(
+                cfg.TurboViPlayAPIKey,
+                cfg.VoeSXAPIKey,
+                cfg.SendCMAPIKey,
+                cfg.ByseAPIKey,
+                cfg.StreamtapeLogin,
+                cfg.StreamtapeKey,
+                cfg.MixdropEmail,
+                cfg.MixdropToken,
+                ch, // Channel implements uploader.Logger
+        )
 
         results := upl.UploadToAll(filePath)
         success := uploader.GetSuccessfulUploads(results)

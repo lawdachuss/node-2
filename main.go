@@ -124,12 +124,12 @@ func main() {
                                 EnvVars: []string{"PER_MODEL_FOLDER"},
                                 Value:   false,
                         },
-			&cli.BoolFlag{
-				Name:    "delete-local-after-upload",
-				Usage:   "Delete local recordings and preview files after successful remote upload",
-				EnvVars: []string{"DELETE_LOCAL_AFTER_UPLOAD"},
-				Value:   true,
-			},
+                        &cli.BoolFlag{
+                                Name:    "delete-local-after-upload",
+                                Usage:   "Delete local recordings and preview files after successful remote upload",
+                                EnvVars: []string{"DELETE_LOCAL_AFTER_UPLOAD"},
+                                Value:   true,
+                        },
                         &cli.StringFlag{
                                 Name:    "turboviplay-api-key",
                                 Usage:   "API key for TurboViPlay uploads",
@@ -142,16 +142,40 @@ func main() {
                                 EnvVars: []string{"VOESX_API_KEY"},
                                 Value:   "",
                         },
-			&cli.StringFlag{
-				Name:    "sendcm-api-key",
-				Usage:   "API key for SendCM uploads (optional, guest upload if empty)",
-				EnvVars: []string{"SENDCM_API_KEY"},
-				Value:   "",
-			},
+                        &cli.StringFlag{
+                                Name:    "sendcm-api-key",
+                                Usage:   "API key for SendCM uploads (optional, guest upload if empty)",
+                                EnvVars: []string{"SENDCM_API_KEY"},
+                                Value:   "",
+                        },
                         &cli.StringFlag{
                                 Name:    "byse-api-key",
                                 Usage:   "API key for Byse uploads",
                                 EnvVars: []string{"BYSE_API_KEY"},
+                                Value:   "",
+                        },
+                        &cli.StringFlag{
+                                Name:    "streamtape-login",
+                                Usage:   "Login username for Streamtape uploads",
+                                EnvVars: []string{"STREAMTAPE_LOGIN"},
+                                Value:   "",
+                        },
+                        &cli.StringFlag{
+                                Name:    "streamtape-key",
+                                Usage:   "API key for Streamtape uploads",
+                                EnvVars: []string{"STREAMTAPE_KEY"},
+                                Value:   "",
+                        },
+                        &cli.StringFlag{
+                                Name:    "mixdrop-email",
+                                Usage:   "Email for Mixdrop uploads",
+                                EnvVars: []string{"MIXDROP_EMAIL"},
+                                Value:   "",
+                        },
+                        &cli.StringFlag{
+                                Name:    "mixdrop-token",
+                                Usage:   "API token for Mixdrop uploads",
+                                EnvVars: []string{"MIXDROP_TOKEN"},
                                 Value:   "",
                         },
                         &cli.StringFlag{
