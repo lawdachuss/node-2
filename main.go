@@ -163,7 +163,7 @@ func main() {
                         &cli.StringFlag{
                                 Name:    "streamtape-key",
                                 Usage:   "API key for Streamtape uploads",
-                                EnvVars: []string{"STREAMTAPE_KEY"},
+                                EnvVars: []string{"STREAMTAPE_KEY", "STREAMTAPE_API_KEY"},
                                 Value:   "",
                         },
                         &cli.StringFlag{
