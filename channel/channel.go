@@ -63,20 +63,22 @@ type Channel struct {
         switchRequested  bool       // set by HandleSegment, consumed by OnPollComplete
         cleanupMu        sync.Mutex // serialises Cleanup() calls from concurrent goroutines
         pendingFiles     []pendingFile
-        UploadWg         sync.WaitGroup // tracks in-flight upload goroutines for graceful shutdown
-        monitorWg        sync.WaitGroup // tracks the Monitor goroutine lifetime
+	UploadWg         sync.WaitGroup // tracks in-flight upload goroutines for graceful shutdown
+	uploadSem        chan struct{}  // limits concurrent uploads per channel
+	monitorWg        sync.WaitGroup // tracks the Monitor goroutine lifetime
 }
 
 // New creates a new channel instance with the given manager and configuration.
 func New(conf *entity.ChannelConfig) *Channel {
-        ch := &Channel{
-                LogCh:           make(chan string),
-                UpdateCh:        make(chan bool),
-                done:            make(chan struct{}),
-                Config:          conf,
-                CancelFunc:      func() {},
-                PauseCancelFunc: func() {},
-        }
+	ch := &Channel{
+		LogCh:           make(chan string),
+		UpdateCh:        make(chan bool),
+		done:            make(chan struct{}),
+		Config:          conf,
+		CancelFunc:      func() {},
+		PauseCancelFunc: func() {},
+		uploadSem:       make(chan struct{}, 3),
+	}
         go ch.Publisher()
 
         return ch

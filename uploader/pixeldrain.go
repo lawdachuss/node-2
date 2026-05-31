@@ -32,6 +32,7 @@ func NewPixeldrainUploader(token string) *PixeldrainUploader {
 				ResponseHeaderTimeout: 120 * time.Second,
 				DisableKeepAlives:     true,
 				DialContext:           (&net.Dialer{Timeout: 30 * time.Second}).DialContext,
+				ForceAttemptHTTP2:     false,
 			},
 		},
 	}
