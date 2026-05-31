@@ -42,7 +42,7 @@ func FormatCookieHeader(existingCookies, csrfToken string) string {
 	return strings.Join(parts, "; ")
 }
 
-// JoinCookiePairs merges name=value pairs from Byparr into a cookie header string.
+// JoinCookiePairs merges name=value pairs into a cookie header string.
 func JoinCookiePairs(pairs ...string) string {
 	var parts []string
 	for _, pair := range pairs {

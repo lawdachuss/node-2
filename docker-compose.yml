@@ -1,26 +1,4 @@
 ﻿services:
-  # Byparr - Cloudflare bypass service (official image)
-  byparr:
-    image: ghcr.io/thephaseless/byparr:latest
-    container_name: byparr
-    environment:
-      - HOST=0.0.0.0
-      - PORT=8191
-      - TIMEOUT=180
-      - LOG_LEVEL=INFO
-    restart: unless-stopped
-    # NOTE: /health spawns a browser instance and is slow (5-30s).
-    # For the workflow wait loop we use the faster /docs endpoint instead.
-    # Reduced start_period and retries to cut startup time from ~7 min to ~2 min.
-    healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://localhost:8191/health"]
-      interval: 30s
-      timeout: 35s
-      retries: 3
-      start_period: 60s
-    networks:
-      - recorder-network
-
   # Chaturbate DVR - Stream recorder (built from gogoqaz fork)
   chaturbate-dvr:
     build: .
@@ -30,7 +8,6 @@
       - .env
     environment:
       - INSTANCE_ID=${INSTANCE_ID:-}
-      - FLARESOLVERR_URL=http://byparr:8191/v1
       - SUPABASE_URL=${SUPABASE_URL:-}
       - SUPABASE_API_KEY=${SUPABASE_API_KEY:-}
       - VOESX_API_KEY=${VOESX_API_KEY:-}
@@ -47,15 +24,10 @@
     volumes:
       - ./videos:/usr/src/app/videos
       - ./database:/database
-    depends_on:
-      byparr:
-        condition: service_healthy
     restart: unless-stopped
     # Must be >= the -t value passed to `docker compose stop` in stop_recorder (3000s = 50m).
     # A shorter value here would cause Docker to SIGKILL the container before uploads finish.
     stop_grace_period: 55m
-    networks:
-      - recorder-network
     deploy:
       resources:
         limits:
@@ -65,7 +37,3 @@
         reservations:
           cpus: '0.2'
           memory: 200M
-
-networks:
-  recorder-network:
-    driver: bridge

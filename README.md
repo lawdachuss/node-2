@@ -22,7 +22,7 @@
 
 <br/>
 
-**Record live streams automatically** — multi-channel DVR with Cloudflare bypass, auto-uploads, and a web dashboard. Run it on your server, in Docker, or for free on GitHub Actions.
+**Record live streams automatically** — multi-channel DVR with auto-uploads and a web dashboard. Run it on your server, in Docker, or for free on GitHub Actions.
 
 </div>
 
@@ -54,9 +54,9 @@
 <tr>
 <td>
 
-### :shield: Cloudflare Bypass
-- Byparr with load balancing (2 workers)
-- Auto cookie refresh daemon
+### :cookie: Cookie Auth
+- Manual cookie-based authentication
+- `sessionid` + `csrftoken` from browser
 - Proxy support (SOCKS5/HTTP)
 
 </td>
@@ -114,8 +114,6 @@ docker compose logs -f chaturbate-dvr
 | Service | Port | Purpose |
 |---------|------|---------|
 | `chaturbate-dvr` | `8080` | Recorder + Web UI |
-| `byparr-lb` | `8191` | Cloudflare bypass (nginx) |
-| `byparr` (x2) | internal | Byparr workers |
 | `cookie-refresher` | — | Auto cookie renewal |
 | `uploader` | — | Background uploads |
 
@@ -132,8 +130,6 @@ flowchart LR
     subgraph GHA [GitHub Actions Runner]
         DC[docker compose]
         DVR[chaturbate-dvr]
-        BYP[Byparr x2]
-        TUN[cloudflared tunnel]
     end
     subgraph Out [Outputs]
         UI[Public Dashboard URL]
@@ -160,7 +156,7 @@ flowchart LR
     | `SENDCM_API_KEY` | For uploads | SendCM API key |
     | `GOFILE_API_KEY` | Optional | GoFile (guest works without) |
     | `BYSE_API_KEY` | Optional | Byse.sx API key |
-    | `PROXY_SERVER` | Optional | Proxy URL for Byparr |
+    | `PROXY_SERVER` | Optional | Proxy URL |
     | `PROXY_USERNAME` | Optional | Proxy auth |
     | `PROXY_PASSWORD` | Optional | Proxy auth |
 
@@ -182,11 +178,9 @@ flowchart LR
 
 5. **Run the workflow** — `Actions` tab → `24/7 Recorder` → `Run workflow` → choose duration (1–5 hours)
 
-5. **Get your dashboard URL** — check the run summary, or query your Supabase `tunnel_sessions` table
+5. **Get your dashboard URL** — check the run summary
 
 **What happens automatically:**
-- Byparr starts with 2 workers for Cloudflare bypass
-- A **Cloudflare Tunnel** exposes your dashboard on a public `trycloudflare.com` URL
 - Recording runs for the chosen duration with health checks every 60s
 - If the recorder crashes, it auto-restarts
 - Uploads run in the background to configured hosts
@@ -282,7 +276,7 @@ Run [`database/migrate.sql`](database/migrate.sql) once in your Supabase SQL Edi
 
 This sets up:
 - `channels`, `recordings`, `upload_links` — core DVR data
-- `tunnels`, `tunnel_sessions` — Cloudflare tunnel tracking (per-instance)
+- `tunnels`, `tunnel_sessions` — tunnel instance tracking (per-instance)
 - `app_settings` — channel configs and cookies (per-instance via `channels_<id>`)
 - `channel_logs`, `preview_images`, `disk_usage` — monitoring and metadata
 
@@ -301,10 +295,13 @@ This sets up:
 | `BYSE_API_KEY` | Optional | Byse.sx API key |
 | `COOKIES` | Optional | Browser cookies for auth |
 | `USER_AGENT` | Optional | Custom User-Agent string |
-| `FLARESOLVERR_URL` | Auto in Docker | Byparr endpoint |
 | `PROXY_SERVER` | Optional | HTTP/SOCKS5 proxy |
 | `PROXY_USERNAME` | Optional | Proxy username |
 | `PROXY_PASSWORD` | Optional | Proxy password |
+| `CHATURBATE_API_INITIAL_RPS` | Optional | Initial stream-discovery API requests per second (default `25`) |
+| `CHATURBATE_API_MIN_RPS` | Optional | Minimum adaptive API request rate after failures (default `5`) |
+| `CHATURBATE_API_MAX_RPS` | Optional | Maximum adaptive API request rate after successes (default `100`) |
+| `CHATURBATE_API_BURST` | Optional | Startup burst capacity for large channel lists (default `250`) |
 
 ---
 
@@ -313,24 +310,6 @@ This sets up:
 <p align="center">
   <img src="docs/images/dashboard.png" alt="Dashboard" width="85%" />
 </p>
-
----
-
-## :shield: Cloudflare Bypass
-
-### Automatic (Docker / GitHub Actions)
-
-Byparr handles it — set `FLARESOLVERR_URL=http://byparr-lb/v1` (included in `docker-compose.yml`). The cookie-refresher keeps `cf_clearance` fresh.
-
-### Manual (Local)
-
-1. Open [chaturbate.com](https://chaturbate.com), pass the Cloudflare check
-2. **F12** → **Application** → **Cookies** → copy `cf_clearance`
-3. Run with cookies:
-
-```bash
-./chaturbate-dvr -u CHANNEL -cookies "cf_clearance=YOUR_VALUE" -user-agent "YOUR_UA"
-```
 
 ---
 
@@ -401,8 +380,6 @@ Without TeaCat's foundational work, none of this would exist. The core recording
 
 | Project | Purpose |
 |---------|---------|
-| [Byparr](https://github.com/ThePhaseless/Byparr) | Cloudflare bypass engine |
-| [Cloudflare Tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/) | Public dashboard tunneling |
 | [Twemoji](https://github.com/jdecked/twemoji) | UI favicon |
 
 </div>

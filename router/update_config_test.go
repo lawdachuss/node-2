@@ -20,7 +20,7 @@ func TestUpdateConfigAcceptsJSON(t *testing.T) {
 	c, _ := gin.CreateTestContext(w)
 
 	body, err := json.Marshal(map[string]string{
-		"cookies":    "cf_clearance=test; csrftoken=abc123",
+		"cookies":    "sessionid=test; csrftoken=abc123",
 		"user_agent": "TestAgent/1.0",
 	})
 	if err != nil {
@@ -36,7 +36,7 @@ func TestUpdateConfigAcceptsJSON(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200; body: %s", w.Code, w.Body.String())
 	}
-	if server.Config.Cookies != "cf_clearance=test; csrftoken=abc123" {
+	if server.Config.Cookies != "sessionid=test; csrftoken=abc123" {
 		t.Fatalf("Cookies = %q", server.Config.Cookies)
 	}
 	if server.Config.UserAgent != "TestAgent/1.0" {

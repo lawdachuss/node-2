@@ -82,7 +82,7 @@ if ($dnsWorking) {
         $avgTime = ($pingResult | Measure-Object -Property ResponseTime -Average).Average
         Write-Host "   ✅ Ping successful (avg: $([math]::Round($avgTime, 2))ms)" -ForegroundColor Green
     } catch {
-        Write-Host "   ⚠️  Ping failed (this is OK - Cloudflare may block ICMP)" -ForegroundColor Yellow
+        Write-Host "   ⚠️  Ping failed (this is OK - network may block ICMP)" -ForegroundColor Yellow
     }
 } else {
     Write-Host "   ⏭️  Skipped (DNS failed)" -ForegroundColor Gray
@@ -124,7 +124,7 @@ if ($tcpWorking) {
             if ($statusCode -eq 502 -or $statusCode -eq 503 -or $statusCode -eq 504) {
                 Write-Host "   ⚠️  Gateway error - the backend app may not be running" -ForegroundColor Yellow
             } elseif ($statusCode -eq 403) {
-                Write-Host "   ⚠️  Forbidden - Cloudflare may be blocking the request" -ForegroundColor Yellow
+                Write-Host "   ⚠️  Forbidden - the tunnel endpoint may be blocking the request" -ForegroundColor Yellow
             } elseif ($statusCode -eq 521) {
                 Write-Host "   ⚠️  Web server is down - the backend app crashed" -ForegroundColor Yellow
             }
@@ -195,7 +195,7 @@ if ($httpWorking) {
     Write-Host ""
     Write-Host "Possible causes:" -ForegroundColor White
     Write-Host "  • Backend app is not running or crashed" -ForegroundColor Gray
-    Write-Host "  • Cloudflare is blocking requests" -ForegroundColor Gray
+    Write-Host "  • The tunnel endpoint is blocking requests" -ForegroundColor Gray
     Write-Host "  • SSL/TLS handshake issues" -ForegroundColor Gray
     Write-Host ""
     Write-Host "Try:" -ForegroundColor White
@@ -207,7 +207,7 @@ if ($httpWorking) {
     Write-Host ""
     Write-Host "Possible causes:" -ForegroundColor White
     Write-Host "  • Your firewall is blocking the connection" -ForegroundColor Gray
-    Write-Host "  • Your ISP is blocking Cloudflare Tunnel domains" -ForegroundColor Gray
+    Write-Host "  • Your ISP is blocking tunnel domains" -ForegroundColor Gray
     Write-Host "  • The tunnel process died" -ForegroundColor Gray
     Write-Host ""
     Write-Host "Try:" -ForegroundColor White
@@ -224,7 +224,7 @@ if ($httpWorking) {
     Write-Host ""
     Write-Host "Try:" -ForegroundColor White
     Write-Host "  1. Wait 5-10 minutes and test again" -ForegroundColor Gray
-    Write-Host "  2. Use Google DNS (8.8.8.8) or Cloudflare DNS (1.1.1.1)" -ForegroundColor Gray
+    Write-Host "  2. Use Google DNS (8.8.8.8) or public DNS (1.1.1.1)" -ForegroundColor Gray
     Write-Host "  3. Flush DNS cache: ipconfig /flushdns" -ForegroundColor Gray
     Write-Host "  4. Get a fresh tunnel URL from GitHub Actions" -ForegroundColor Gray
 }

@@ -1,5 +1,5 @@
 {{ define "channel_info" }}
-<div data-status="{{ if and .IsOnline (not .IsPaused) }}recording{{ else if .IsPaused }}paused{{ else }}offline{{ end }}"
+<div data-status="{{ if and .IsOnline (not .IsPaused) }}recording{{ else if .IsConnecting }}connecting{{ else if .IsPaused }}paused{{ else }}offline{{ end }}"
      data-online="{{ if .IsOnline }}true{{ else }}false{{ end }}"
      data-room-status="{{ .RoomStatus }}">
 
@@ -18,8 +18,8 @@
          loading="lazy" />
     <!-- Gradient overlay -->
     <div class="absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent pointer-events-none"></div>
-    <!-- REC badge -->
-    {{ if and .IsOnline (not .IsPaused) }}
+    <!-- REC badge (after disconnect the dot disappears too) -->
+    {{ if and .IsOnline (not .IsPaused) (not .IsConnecting) }}
     <div class="absolute bottom-2.5 left-2.5">
       <span class="inline-flex items-center gap-1.5 px-2.5 py-1 text-[10px] font-bold rounded-full uppercase tracking-wider badge-recording">
         <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 rec-pulse shrink-0"></span>
@@ -27,8 +27,8 @@
       </span>
     </div>
     {{ end }}
-    <!-- Offline overlay -->
-    {{ if not .IsOnline }}
+    <!-- Offline overlay (only when not connecting/reconnecting) -->
+    {{ if and (not .IsOnline) (not .IsConnecting) }}
     <div class="absolute inset-0 flex items-center justify-center" style="background:rgba(0,0,0,0.3)">
       <svg class="w-10 h-10 text-zinc-700" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
         <path d="M15.75 10.5l4.72-4.72a.75.75 0 011.28.53v11.38a.75.75 0 01-1.28.53l-4.72-4.72M4.5 18.75h9a2.25 2.25 0 002.25-2.25v-9a2.25 2.25 0 00-2.25-2.25h-9A2.25 2.25 0 002.25 7.5v9a2.25 2.25 0 002.25 2.25z"/>
@@ -49,6 +49,11 @@
       {{ end }}
       {{ if and .IsOnline (not .IsPaused) }}
       <span class="inline-flex items-center gap-1 px-2 py-0.5 text-[9px] font-bold rounded-full uppercase tracking-wider badge-recording">Recording</span>
+      {{ else if .IsConnecting }}
+      <span class="inline-flex items-center gap-1 px-2 py-0.5 text-[9px] font-bold rounded-full uppercase" style="color:#fbbf24;background:rgba(251,191,36,0.1);border:1px solid rgba(251,191,36,0.25)">
+        <svg class="w-2.5 h-2.5 animate-spin shrink-0" fill="none" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" stroke-dasharray="31.4" stroke-dashoffset="10"/></svg>
+        Reconnecting
+      </span>
       {{ else if .IsPaused }}
       <span class="inline-flex items-center px-2 py-0.5 text-[9px] font-bold rounded-full uppercase badge-paused">{{ if .RoomStatus }}{{ .RoomStatus }}{{ else }}Paused{{ end }}</span>
       {{ else }}
@@ -88,7 +93,7 @@
       </svg>
       <div class="min-w-0">
         <div class="text-[9px] font-bold uppercase tracking-widest text-zinc-700 mb-0.5">Last Streamed</div>
-        <div class="text-[11px] text-zinc-500">{{ if .StreamedAt }}{{ .StreamedAt }}{{ if and .IsOnline (not .IsPaused) }} — <span class="text-emerald-400 font-bold">NOW</span>{{ end }}{{ else }}&mdash;{{ end }}</div>
+        <div class="text-[11px] text-zinc-500">{{ if .StreamedAt }}{{ .StreamedAt }}{{ if and .IsOnline (not .IsPaused) (not .IsConnecting) }} — <span class="text-emerald-400 font-bold">NOW</span>{{ else if .IsConnecting }} — <span class="text-amber-400 font-bold">Reconnecting</span>{{ end }}{{ else }}&mdash;{{ end }}</div>
       </div>
     </div>
 

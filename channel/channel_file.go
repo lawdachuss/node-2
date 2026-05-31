@@ -223,7 +223,8 @@ func (ch *Channel) MoveToOutputDir(srcPath string) string {
 		go func() {
 			defer ch.UploadWg.Done()
 			UploadSem <- struct{}{}
-			defer func() { <-UploadSem }()
+			ch.uploadSem <- struct{}{}
+			defer func() { <-ch.uploadSem; <-UploadSem }()
 			ch.generatePreviewAndUpload(srcPath)
 		}()
 		return srcPath
@@ -248,7 +249,8 @@ func (ch *Channel) MoveToOutputDir(srcPath string) string {
 	go func() {
 		defer ch.UploadWg.Done()
 		UploadSem <- struct{}{}
-		defer func() { <-UploadSem }()
+		ch.uploadSem <- struct{}{}
+		defer func() { <-ch.uploadSem; <-UploadSem }()
 		ch.generatePreviewAndUpload(destPath)
 	}()
 	return destPath

@@ -1,3 +1,5 @@
+//go:build ignore
+
 package main
 
 import (
@@ -11,8 +13,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/teacat/chaturbate-dvr/entity"
 	"github.com/teacat/chaturbate-dvr/channel"
+	"github.com/teacat/chaturbate-dvr/entity"
 	"github.com/teacat/chaturbate-dvr/server"
 	"github.com/teacat/chaturbate-dvr/uploader"
 )
@@ -29,14 +31,14 @@ func (s *scriptLogger) Error(format string, a ...any) {
 }
 
 var allowedExt = map[string]bool{
-	".mp4": true,
-	".mkv": true,
+	".mp4":  true,
+	".mkv":  true,
 	".webm": true,
-	".ts": true,
-	".avi": true,
-	".mov": true,
-	".flv": true,
-	".m4v": true,
+	".ts":   true,
+	".avi":  true,
+	".mov":  true,
+	".flv":  true,
+	".m4v":  true,
 }
 
 func firstNonEmpty(vals ...string) string {
@@ -223,7 +225,7 @@ func main() {
 
 		username := extractUsername(filename)
 
-                if err := server.SaveRecordingWithLinks(username, filename, timestamp, "", nil, 0, "", 0, filesize, "", embedURL, thumbURL, spriteURL, links); err != nil {
+		if err := server.SaveRecordingWithLinks(username, filename, timestamp, "", nil, 0, "", 0, filesize, "", embedURL, thumbURL, spriteURL, links); err != nil {
 			log.Printf("failed saving metadata for %s: %v", filename, err)
 		} else {
 			log.Printf("saved metadata for %s (links: %d)", filename, len(links))

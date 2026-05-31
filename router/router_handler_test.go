@@ -15,19 +15,19 @@ func TestBuildHostPlayersGeneratesEmbeds(t *testing.T) {
 		byHost[player.Host] = player
 	}
 
-	if got := byHost["Byse"].EmbedURL; got != "https://api.byse.sx/e/2stlap4n6a0h" {
+	if got := byHost["Byse"].EmbedURL; got != "https://filemoon.sx/e/2stlap4n6a0h" {
 		t.Fatalf("Byse embed URL = %q", got)
 	}
-	if got := byHost["Byse"].VideoURL; got != "" {
+	if got := byHost["Byse"].VideoURL; got != "https://filemoon.sx/e/2stlap4n6a0h" {
 		t.Fatalf("Byse video URL = %q", got)
 	}
 	if got := byHost["GoFile"].EmbedURL; got != "" {
 		t.Fatalf("GoFile embed URL = %q", got)
 	}
-	if got := byHost["GoFile"].VideoURL; got != "" {
+	if got := byHost["GoFile"].VideoURL; got != "https://gofile.io/d/example" {
 		t.Fatalf("GoFile video URL = %q", got)
 	}
-	if got := byHost["SendCM"].EmbedURL; got != "https://send.now/sendcode123" {
+	if got := byHost["SendCM"].EmbedURL; got != "" {
 		t.Fatalf("SendCM embed URL = %q", got)
 	}
 	if got := byHost["VOE.sx"].EmbedURL; got != "https://voe.sx/e/abc123" {

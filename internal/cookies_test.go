@@ -4,7 +4,7 @@ import "testing"
 
 func TestCSRFFromCookies(t *testing.T) {
 	t.Parallel()
-	got := CSRFFromCookies("cf_clearance=abc; csrftoken=real-token; sessionid=x")
+	got := CSRFFromCookies("sessionid=x; csrftoken=real-token; custom=abc")
 	if got != "real-token" {
 		t.Fatalf("CSRFFromCookies() = %q, want real-token", got)
 	}
@@ -12,7 +12,7 @@ func TestCSRFFromCookies(t *testing.T) {
 
 func TestFormatCookieHeaderSingleCSRFToken(t *testing.T) {
 	t.Parallel()
-	header := FormatCookieHeader("cf_clearance=abc; csrftoken=old", "new-token")
+	header := FormatCookieHeader("sessionid=x; csrftoken=old", "new-token")
 	if CSRFFromCookies(header) != "new-token" {
 		t.Fatalf("csrftoken in header = %q, want new-token", CSRFFromCookies(header))
 	}

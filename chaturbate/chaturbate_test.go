@@ -45,6 +45,25 @@ func TestPickPlaylistIncludesDefaultAudioRendition(t *testing.T) {
 	}
 }
 
+func TestAlternateEdgeURLsPreservesLLHLSToken(t *testing.T) {
+	t.Parallel()
+
+	source := "https://edge15-sin.live.mmcdn.com/v1/edge/streams/example/llhls.m3u8?token=abc.def"
+
+	urls := alternateEdgeURLs(source)
+	if len(urls) != len(edgeRegions)-1 {
+		t.Fatalf("alternateEdgeURLs() returned %d URLs, want %d", len(urls), len(edgeRegions)-1)
+	}
+	for _, got := range urls {
+		if strings.Contains(got, "edge15-sin.live.mmcdn.com") {
+			t.Fatalf("alternateEdgeURLs() included original edge: %q", got)
+		}
+		if !strings.Contains(got, "/llhls.m3u8?token=abc.def") {
+			t.Fatalf("alternateEdgeURLs() did not preserve path/token: %q", got)
+		}
+	}
+}
+
 // TestProcessMediaPlaylistKeepsLastSeqOnFetchFailure guards against silent
 // segment drop: if a segment fetch fails, lastSeq must not advance past the
 // failed segment, so the next playlist poll can retry it (or at minimum not
@@ -108,8 +127,11 @@ func TestProcessMediaPlaylistKeepsLastSeqOnFetchFailure(t *testing.T) {
 	lastSeq := -1
 	initWritten := false
 	_, err := pl.processMediaPlaylist(context.Background(), internal.NewReq(), pl.PlaylistURL, handler, nil, &lastSeq, &initWritten)
-	if err != nil {
-		t.Fatalf("processMediaPlaylist() error = %v", err)
+	if err == nil {
+		t.Fatalf("processMediaPlaylist() error = nil, want segment fetch error")
+	}
+	if !strings.Contains(err.Error(), "segment seq=101") {
+		t.Fatalf("processMediaPlaylist() error = %v, want segment seq=101", err)
 	}
 
 	if got := atomic.LoadInt32(&handlerCalls); got != 1 {

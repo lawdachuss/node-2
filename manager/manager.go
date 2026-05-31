@@ -1,177 +1,196 @@
 package manager
 
 import (
-        "bytes"
-        "encoding/json"
-        "fmt"
-        "log"
-        "net/http"
-        "os"
-        "path/filepath"
-        "sort"
-        "strings"
-        "sync"
+	"bytes"
+	"encoding/json"
+	"fmt"
+	"log"
+	"net/http"
+	"os"
+	"path/filepath"
+	"sort"
+	"strings"
+	"sync"
+	"time"
 
-        "github.com/r3labs/sse/v2"
-        "github.com/teacat/chaturbate-dvr/channel"
-        "github.com/teacat/chaturbate-dvr/entity"
-        "github.com/teacat/chaturbate-dvr/router/view"
-        "github.com/teacat/chaturbate-dvr/server"
+	"github.com/r3labs/sse/v2"
+	"github.com/teacat/chaturbate-dvr/channel"
+	"github.com/teacat/chaturbate-dvr/entity"
+	"github.com/teacat/chaturbate-dvr/router/view"
+	"github.com/teacat/chaturbate-dvr/server"
 )
 
 // Manager is responsible for managing channels and their states.
 type Manager struct {
-        Channels sync.Map
-        SSE      *sse.Server
+	Channels sync.Map
+	SSE      *sse.Server
+
+	// saveDebounce coalesces rapid SaveConfig calls into a single
+	// Supabase PATCH.  The first call starts a 1 s timer; subsequent
+	// calls reset it.  When the timer fires, the actual save runs.
+	// This prevents API hammering when many channels are paused,
+	// resumed, or stopped in quick succession.
+	saveDebounce   *time.Timer
+	saveDebounceMu sync.Mutex
 }
 
 // New initializes a new Manager instance with an SSE server.
 func New() (*Manager, error) {
 
-        server := sse.New()
-        server.SplitData = true
+	server := sse.New()
+	server.SplitData = true
 
-        updateStream := server.CreateStream("updates")
-        updateStream.AutoReplay = false
+	updateStream := server.CreateStream("updates")
+	updateStream.AutoReplay = false
 
-        return &Manager{
-                SSE: server,
-        }, nil
+	return &Manager{
+		SSE: server,
+	}, nil
+}
+
+// debouncedSave is a non-blocking request to persist channel state.
+// Multiple calls within 1 s are coalesced into a single Supabase write.
+func (m *Manager) debouncedSave() {
+	m.saveDebounceMu.Lock()
+	defer m.saveDebounceMu.Unlock()
+	if m.saveDebounce != nil {
+		m.saveDebounce.Stop()
+	}
+	m.saveDebounce = time.AfterFunc(time.Second, func() {
+		if err := m.SaveConfig(); err != nil {
+			fmt.Printf("[WARN] debounced save: %v\n", err)
+		}
+	})
 }
 
 // SaveConfig saves the current channels to Supabase.
 func (m *Manager) SaveConfig() error {
-        // Initialize as empty slice (not nil) so MarshalIndent produces "[]"
-        // rather than "null" when all channels are deleted. Supabase's
-        // app_settings.value column has a NOT NULL constraint.
-        config := make([]*entity.ChannelConfig, 0)
+	// Initialize as empty slice (not nil) so MarshalIndent produces "[]"
+	// rather than "null" when all channels are deleted. Supabase's
+	// app_settings.value column has a NOT NULL constraint.
+	config := make([]*entity.ChannelConfig, 0)
 
-        m.Channels.Range(func(key, value any) bool {
-                config = append(config, value.(*channel.Channel).Config)
-                return true
-        })
+	m.Channels.Range(func(key, value any) bool {
+		config = append(config, value.(*channel.Channel).Config)
+		return true
+	})
 
-        b, err := json.MarshalIndent(config, "", "  ")
-        if err != nil {
-                return fmt.Errorf("marshal: %w", err)
-        }
-        if err := server.SaveChannelsToDB(b); err != nil {
-                return fmt.Errorf("save channels to database: %w", err)
-        }
-        return nil
+	b, err := json.MarshalIndent(config, "", "  ")
+	if err != nil {
+		return fmt.Errorf("marshal: %w", err)
+	}
+	if err := server.SaveChannelsToDB(b); err != nil {
+		return fmt.Errorf("save channels to database: %w", err)
+	}
+	return nil
 }
 
 // LoadConfig loads the channels from Supabase and starts them.
 // All channels are automatically resumed on startup, regardless of their paused state.
 func (m *Manager) LoadConfig() error {
-        // Restore persisted cookies/user-agent before starting channels
-        if err := server.LoadSettings(); err != nil {
-                fmt.Printf("[WARN] could not load settings: %v\n", err)
-        }
+	// Restore persisted cookies/user-agent before starting channels
+	if err := server.LoadSettings(); err != nil {
+		fmt.Printf("[WARN] could not load settings: %v\n", err)
+	}
 
-        // Load channels from Supabase
-        b := server.LoadChannelsFromDB()
-        if b == nil {
-                return nil
-        }
+	// Load channels from Supabase
+	b := server.LoadChannelsFromDB()
+	if b == nil {
+		return nil
+	}
 
-        var config []*entity.ChannelConfig
-        if err := json.Unmarshal(b, &config); err != nil {
-                return fmt.Errorf("unmarshal: %w", err)
-        }
+	var config []*entity.ChannelConfig
+	if err := json.Unmarshal(b, &config); err != nil {
+		return fmt.Errorf("unmarshal: %w", err)
+	}
 
-        if len(config) == 0 {
-                return nil
-        }
+	if len(config) == 0 {
+		return nil
+	}
 
-        seq := 0
-        for _, conf := range config {
-                ch := channel.New(conf)
-                m.Channels.Store(conf.Username, ch)
+	for _, conf := range config {
+		ch := channel.New(conf)
+		m.Channels.Store(conf.Username, ch)
 
-                // Automatically resume all channels on startup
-                if ch.Config.IsPaused.Load() {
-                        ch.Info("channel was paused, automatically resuming on startup")
-                        ch.Config.IsPaused.Store(false)
-                }
-                go ch.Resume(seq)
-                seq++
-        }
+		// Automatically resume all channels on startup
+		if ch.Config.IsPaused.Load() {
+			ch.Info("channel was paused, automatically resuming on startup")
+			ch.Config.IsPaused.Store(false)
+		}
 
-        // Save the updated config to persist the resumed state.
-        // This is best-effort — if Supabase is down, the web UI should still start
-        // and channels will save their state on the next config change.
-        if err := m.SaveConfig(); err != nil {
-                fmt.Printf("[WARN] could not persist channel state to Supabase: %v\n", err)
-                fmt.Println("[WARN] channels are running but state changes will be lost if the container restarts")
-        }
+		ch.Resume(0)
+	}
 
-        // Clean up orphaned sidecar files from previous interrupted runs
-        go func() {
-                channel.CleanupOrphanedFiles()
-                m.ScanThumbnails()
-        }()
+	// Save the updated config to persist the resumed state.
+	// This is best-effort — if Supabase is down, the web UI should still start
+	// and channels will save their state on the next config change.
+	if err := m.SaveConfig(); err != nil {
+		fmt.Printf("[WARN] could not persist channel state to Supabase: %v\n", err)
+		fmt.Println("[WARN] channels are running but state changes will be lost if the container restarts")
+	}
 
-        return nil
+	// Clean up orphaned sidecar files from previous interrupted runs
+	go func() {
+		channel.CleanupOrphanedFiles()
+		m.ScanThumbnails()
+	}()
+
+	return nil
 }
 
 // ScanThumbnails walks the videos directory and generates thumbnails for any
 // video file that is missing preview URLs in Supabase.
 func (m *Manager) ScanThumbnails() {
-        videoExts := map[string]bool{".mp4": true, ".mkv": true}
-        dirs := []string{"videos"}
+	videoExts := map[string]bool{".mp4": true, ".mkv": true}
+	dirs := []string{"videos"}
 
-        for _, dir := range dirs {
-                filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
-                        if err != nil || info == nil || info.IsDir() {
-                                return nil
-                        }
-                        ext := strings.ToLower(filepath.Ext(path))
-                        if !videoExts[ext] {
-                                return nil
-                        }
-                        // Skip segment sidecars
-                        if strings.Contains(info.Name(), ".video.") || strings.Contains(info.Name(), ".audio.") {
-                                return nil
-                        }
-                        // Only process files that are missing preview URLs in Supabase
-                        thumbURL, spriteURL := server.LoadPreviewLinks(info.Name())
-                        if thumbURL != "" && spriteURL != "" {
-                                return nil
-                        }
-                        newThumb, newSprite := channel.GenerateThumbnailForFile(path)
-                        if newThumb != "" || newSprite != "" {
-                                if err := server.SavePreviewLinks(info.Name(), newThumb, newSprite); err != nil {
-                                        log.Printf("[thumb] failed to save preview links for %s: %v", info.Name(), err)
-                                }
-                        }
-                        return nil
-                })
-        }
+	for _, dir := range dirs {
+		filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
+			if err != nil || info == nil || info.IsDir() {
+				return nil
+			}
+			ext := strings.ToLower(filepath.Ext(path))
+			if !videoExts[ext] {
+				return nil
+			}
+			// Skip segment sidecars
+			if strings.Contains(info.Name(), ".video.") || strings.Contains(info.Name(), ".audio.") {
+				return nil
+			}
+			// Only process files that are missing preview URLs in Supabase
+			thumbURL, spriteURL := server.LoadPreviewLinks(info.Name())
+			if thumbURL != "" && spriteURL != "" {
+				return nil
+			}
+			newThumb, newSprite := channel.GenerateThumbnailForFile(path)
+			if newThumb != "" || newSprite != "" {
+				if err := server.SavePreviewLinks(info.Name(), newThumb, newSprite); err != nil {
+					log.Printf("[thumb] failed to save preview links for %s: %v", info.Name(), err)
+				}
+			}
+			return nil
+		})
+	}
 }
 
 // CreateChannel starts monitoring an M3U8 stream
 func (m *Manager) CreateChannel(conf *entity.ChannelConfig, shouldSave bool) error {
-        conf.Sanitize()
-        ch := channel.New(conf)
+	conf.Sanitize()
+	ch := channel.New(conf)
 
-        // prevent duplicate channels
-        _, ok := m.Channels.Load(conf.Username)
-        if ok {
-                return fmt.Errorf("channel %s already exists", conf.Username)
-        }
-        m.Channels.Store(conf.Username, ch)
+	// prevent duplicate channels
+	_, ok := m.Channels.Load(conf.Username)
+	if ok {
+		return fmt.Errorf("channel %s already exists", conf.Username)
+	}
+	m.Channels.Store(conf.Username, ch)
 
-        go ch.Resume(0)
+	ch.Resume(0)
 
-        if shouldSave {
-                go func() {
-                        if err := m.SaveConfig(); err != nil {
-                                fmt.Printf("[WARN] SaveConfig after create %q: %v\n", conf.Username, err)
-                        }
-                }()
-        }
-        return nil
+	if shouldSave {
+		m.debouncedSave()
+	}
+	return nil
 }
 
 // StopChannel deletes a channel permanently.
@@ -189,51 +208,51 @@ func (m *Manager) CreateChannel(conf *entity.ChannelConfig, shouldSave bool) err
 //  4. Delete the secondary channels-table row in a goroutine — best-effort FK
 //     cleanup that never needs to block the response.
 func (m *Manager) StopChannel(username string) error {
-        thing, ok := m.Channels.Load(username)
-        if !ok {
-                return nil
-        }
+	thing, ok := m.Channels.Load(username)
+	if !ok {
+		return nil
+	}
 
-        // Step 1: remove from memory so subsequent requests are immediate no-ops
-        // and the UI reflects the deletion on the next GET /.
-        m.Channels.Delete(username)
+	// Step 1: remove from memory so subsequent requests are immediate no-ops
+	// and the UI reflects the deletion on the next GET /.
+	m.Channels.Delete(username)
 
-        // Step 2: synchronous PATCH to the authoritative app_settings blob.
-        // Must complete before we redirect so the deletion survives a restart.
-        if err := m.SaveConfig(); err != nil {
-                fmt.Printf("[ERROR] SaveConfig after delete of %q: %v\n", username, err)
-                return fmt.Errorf("save config: %w", err)
-        }
-        fmt.Printf(" INFO [manager] channel %q deleted and persisted to Supabase\n", username)
+	// Step 2: synchronous PATCH to the authoritative app_settings blob.
+	// Must complete before we redirect so the deletion survives a restart.
+	if err := m.SaveConfig(); err != nil {
+		fmt.Printf("[ERROR] SaveConfig after delete of %q: %v\n", username, err)
+		return fmt.Errorf("save config: %w", err)
+	}
+	fmt.Printf(" INFO [manager] channel %q deleted and persisted to Supabase\n", username)
 
-        // Step 3: non-blocking cleanup — stop the ffmpeg process.
-        // The channels table row is intentionally left orphaned because it is shared
-        // across instances and no longer read by LoadChannelsFromDB.
-        go func() {
-                thing.(*channel.Channel).Stop()
-        }()
+	// Step 3: non-blocking cleanup — stop the ffmpeg process.
+	// The channels table row is intentionally left orphaned because it is shared
+	// across instances and no longer read by LoadChannelsFromDB.
+	go func() {
+		thing.(*channel.Channel).Stop()
+	}()
 
-        return nil
+	return nil
 }
 
 // WaitForUploads blocks until all in-flight upload goroutines across every
 // channel have finished. Call this during graceful shutdown so recordings
 // are not lost when the container receives SIGTERM.
 func (m *Manager) WaitForUploads() {
-        m.Channels.Range(func(key, value any) bool {
-                value.(*channel.Channel).UploadWg.Wait()
-                return true
-        })
+	m.Channels.Range(func(key, value any) bool {
+		value.(*channel.Channel).UploadWg.Wait()
+		return true
+	})
 }
 
 // StopAllChannels cancels all active channel Monitor goroutines without
 // removing them from the map. Used during graceful shutdown so recordings
 // can be finalized and uploaded before the process exits.
 func (m *Manager) StopAllChannels() {
-        m.Channels.Range(func(key, value any) bool {
-                value.(*channel.Channel).Stop()
-                return true
-        })
+	m.Channels.Range(func(key, value any) bool {
+		value.(*channel.Channel).Stop()
+		return true
+	})
 }
 
 // WaitForAllChannels blocks until every channel's Monitor goroutine has
@@ -241,98 +260,94 @@ func (m *Manager) StopAllChannels() {
 // channel, meaning all pending files have been queued into UploadWg.
 // Always call this before WaitForUploads() during graceful shutdown.
 func (m *Manager) WaitForAllChannels() {
-        m.Channels.Range(func(key, value any) bool {
-                value.(*channel.Channel).WaitMonitor()
-                return true
-        })
+	m.Channels.Range(func(key, value any) bool {
+		value.(*channel.Channel).WaitMonitor()
+		return true
+	})
 }
 
-// PauseChannel pauses the channel and synchronously persists the state.
+// PauseChannel pauses the channel and persists the state.
 func (m *Manager) PauseChannel(username string) error {
-        thing, ok := m.Channels.Load(username)
-        if !ok {
-                return nil
-        }
-        thing.(*channel.Channel).Pause()
-        if err := m.SaveConfig(); err != nil {
-                fmt.Printf("[WARN] SaveConfig after pause %q: %v\n", username, err)
-        }
-        return nil
+	thing, ok := m.Channels.Load(username)
+	if !ok {
+		return nil
+	}
+	thing.(*channel.Channel).Pause()
+	m.debouncedSave()
+	return nil
 }
 
-// ResumeChannel resumes the channel and synchronously persists the state.
+// ResumeChannel resumes the channel and persists the state.
 func (m *Manager) ResumeChannel(username string) error {
-        thing, ok := m.Channels.Load(username)
-        if !ok {
-                return nil
-        }
-        thing.(*channel.Channel).Resume(0)
-        if err := m.SaveConfig(); err != nil {
-                fmt.Printf("[WARN] SaveConfig after resume %q: %v\n", username, err)
-        }
-        return nil
+	thing, ok := m.Channels.Load(username)
+	if !ok {
+		return nil
+	}
+	thing.(*channel.Channel).Resume(0)
+	m.debouncedSave()
+	return nil
 }
 
 // ChannelInfo returns a list of channel information for the web UI.
 func (m *Manager) ChannelInfo() []*entity.ChannelInfo {
-        var channels []*entity.ChannelInfo
+	var channels []*entity.ChannelInfo
 
-        // Iterate over the channels and append their information to the slice
-        m.Channels.Range(func(key, value any) bool {
-                channels = append(channels, value.(*channel.Channel).ExportInfo())
-                return true
-        })
+	// Iterate over the channels and append their information to the slice
+	m.Channels.Range(func(key, value any) bool {
+		channels = append(channels, value.(*channel.Channel).ExportInfo())
+		return true
+	})
 
-        sort.Slice(channels, func(i, j int) bool {
-                // Paused channels always sort to the bottom.
-                getPriority := func(c *entity.ChannelInfo) int {
-                        switch {
-                        case !c.IsPaused && c.IsOnline:
-                                return 0 // Recording
-                        case !c.IsPaused:
-                                return 1 // Offline, actively watching
-                        case c.IsOnline:
-                                return 2 // Paused, currently online
-                        default:
-                                return 3 // Paused, offline
-                        }
-                }
+	sort.Slice(channels, func(i, j int) bool {
+		// Paused channels always sort to the bottom.
+		getPriority := func(c *entity.ChannelInfo) int {
+			switch {
+			case !c.IsPaused && c.IsOnline:
+				return 0 // Recording
+			case !c.IsPaused:
+				return 1 // Offline, actively watching
+			case c.IsOnline:
+				return 2 // Paused, currently online
+			default:
+				return 3 // Paused, offline
+			}
+		}
 
-                pi, pj := getPriority(channels[i]), getPriority(channels[j])
-                if pi != pj {
-                        return pi < pj
-                }
-                // Same priority: sort by username alphabetically
-                return strings.ToLower(channels[i].Username) < strings.ToLower(channels[j].Username)
-        })
+		pi, pj := getPriority(channels[i]), getPriority(channels[j])
+		if pi != pj {
+			return pi < pj
+		}
+		// Same priority: sort by username alphabetically
+		return strings.ToLower(channels[i].Username) < strings.ToLower(channels[j].Username)
+	})
 
-        return channels
+	return channels
 }
 
 // Publish sends an SSE event to the specified channel.
 func (m *Manager) Publish(evt entity.Event, info *entity.ChannelInfo) {
-        switch evt {
-        case entity.EventUpdate:
-                var b bytes.Buffer
-                if err := view.InfoTpl.ExecuteTemplate(&b, "channel_info", info); err != nil {
-                        fmt.Println("Error executing template:", err)
-                        return
-                }
-                m.SSE.Publish("updates", &sse.Event{
-                        Event: []byte(info.Username + "-info"),
-                        Data:  b.Bytes(),
-                })
-        case entity.EventLog:
-                if len(info.Logs) > 0 {
-                        m.SSE.Publish("updates", &sse.Event{
-                                Event: []byte(info.Username + "-log"),
-                                Data:  []byte(info.Logs[len(info.Logs)-1]),
-                        })
-                }
-        }
+	switch evt {
+	case entity.EventUpdate:
+		var b bytes.Buffer
+		if err := view.InfoTpl.ExecuteTemplate(&b, "channel_info", info); err != nil {
+			fmt.Println("Error executing template:", err)
+			return
+		}
+		m.SSE.Publish("updates", &sse.Event{
+			Event: []byte(info.Username + "-info"),
+			Data:  b.Bytes(),
+		})
+	case entity.EventLog:
+		if len(info.Logs) > 0 {
+			m.SSE.Publish("updates", &sse.Event{
+				Event: []byte(info.Username + "-log"),
+				Data:  []byte(info.Logs[len(info.Logs)-1]),
+			})
+		}
+	}
 }
 
 // Subscriber handles SSE subscriptions for the specified channel.
 func (m *Manager) Subscriber(w http.ResponseWriter, r *http.Request) {
-        m.SSE.ServeHTTP(w, r)
+	m.SSE.ServeHTTP(w, r)
 }

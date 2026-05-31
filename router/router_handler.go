@@ -133,7 +133,6 @@ func Updates(c *gin.Context) {
 // UpdateConfigRequest represents the request body for updating configuration.
 type UpdateConfigRequest struct {
         Cookies         string `json:"cookies" form:"cookies"`
-        CfClearance     string `json:"cf_clearance" form:"cf_clearance"`
         SessionID       string `json:"sessionid" form:"sessionid"`
         Csrftoken       string `json:"csrftoken" form:"csrftoken"`
         UserAgent string `json:"user_agent" form:"user_agent"`
@@ -155,9 +154,6 @@ func UpdateConfig(c *gin.Context) {
         if req.Cookies != "" {
                 server.Config.Cookies = req.Cookies
         }
-        if req.CfClearance != "" {
-                server.Config.CfClearance = req.CfClearance
-        }
         if req.SessionID != "" {
                 server.Config.SessionID = req.SessionID
         }
@@ -173,10 +169,7 @@ func UpdateConfig(c *gin.Context) {
                 }, req.UserAgent))
         }
 
-        parts := make([]string, 0, 3)
-        if server.Config.CfClearance != "" {
-                parts = append(parts, "cf_clearance="+server.Config.CfClearance)
-        }
+        parts := make([]string, 0, 2)
         if server.Config.SessionID != "" {
                 parts = append(parts, "sessionid="+server.Config.SessionID)
         }

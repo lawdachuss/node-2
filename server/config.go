@@ -14,7 +14,6 @@ var configMu sync.RWMutex
 
 type persistedSettings struct {
         Cookies         string `json:"cookies"`
-        CfClearance     string `json:"cf_clearance,omitempty"`
         SessionID       string `json:"sessionid,omitempty"`
         Csrftoken       string `json:"csrftoken,omitempty"`
         UserAgent string `json:"user_agent"`
@@ -30,9 +29,6 @@ func SaveSettings() error {
 	configMu.RLock()
         s := persistedSettings{
                 Cookies:         Config.Cookies,
-                CfClearance:     Config.CfClearance,
-                SessionID:       Config.SessionID,
-                Csrftoken:       Config.Csrftoken,
                 UserAgent: Config.UserAgent,
                 StreamtapeLogin:  Config.StreamtapeLogin,
 		StreamtapeKey:    Config.StreamtapeKey,
@@ -69,9 +65,6 @@ func LoadSettings() error {
         if s.Cookies != "" {
                 Config.Cookies = s.Cookies
         }
-        if s.CfClearance != "" {
-                Config.CfClearance = s.CfClearance
-        }
         if s.SessionID != "" {
                 Config.SessionID = s.SessionID
         }
@@ -99,9 +92,6 @@ func LoadSettings() error {
 
         // Parse Config.Cookies back into individual fields if they are empty.
         if Config.Cookies != "" {
-                if Config.CfClearance == "" {
-                        Config.CfClearance = extractCookie(Config.Cookies, "cf_clearance")
-                }
                 if Config.SessionID == "" {
                         Config.SessionID = extractCookie(Config.Cookies, "sessionid")
                 }

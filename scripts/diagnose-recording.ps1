@@ -9,7 +9,7 @@ $issues = @()
 $warnings = @()
 
 # Check 1: Docker Installation
-Write-Host "[1/8] Checking Docker..." -ForegroundColor Yellow
+Write-Host "[1/7] Checking Docker..." -ForegroundColor Yellow
 try {
     $dockerVersion = docker --version 2>$null
     if ($dockerVersion) {
@@ -24,7 +24,7 @@ try {
 }
 
 # Check 2: Docker Compose
-Write-Host "[2/8] Checking Docker Compose..." -ForegroundColor Yellow
+Write-Host "[2/7] Checking Docker Compose..." -ForegroundColor Yellow
 try {
     $composeVersion = docker-compose --version 2>$null
     if ($composeVersion) {
@@ -39,7 +39,7 @@ try {
 }
 
 # Check 3: Settings File
-Write-Host "[3/8] Checking settings.json..." -ForegroundColor Yellow
+Write-Host "[3/7] Checking settings.json..." -ForegroundColor Yellow
 $settingsPath = "settings.json"
 if (-not (Test-Path $settingsPath)) {
     $settingsPath = "conf/settings.json"
@@ -55,13 +55,6 @@ if (Test-Path $settingsPath) {
         $cookieLength = $settings.cookies.Length
         Write-Host "  📊 Cookies: $cookieLength characters" -ForegroundColor White
         
-        if ($settings.cookies -match "cf_clearance=") {
-            Write-Host "     ✅ cf_clearance found" -ForegroundColor Green
-        } else {
-            $issues += "Missing cf_clearance cookie (required for Cloudflare bypass)"
-            Write-Host "     ❌ cf_clearance missing" -ForegroundColor Red
-        }
-        
         if ($settings.cookies -match "csrftoken=") {
             Write-Host "     ✅ csrftoken found" -ForegroundColor Green
         } else {
@@ -75,7 +68,7 @@ if (Test-Path $settingsPath) {
             Write-Host "     ❌ Cookies contain newlines (corrupted)" -ForegroundColor Red
         }
     } else {
-        $warnings += "No cookies configured (may fail with Cloudflare)"
+        $warnings += "No cookies configured"
         Write-Host "  ⚠️  No cookies configured" -ForegroundColor Yellow
     }
     
@@ -92,7 +85,7 @@ if (Test-Path $settingsPath) {
 }
 
 # Check 4: Channels Configuration
-Write-Host "[4/8] Checking channels.json..." -ForegroundColor Yellow
+Write-Host "[4/7] Checking channels.json..." -ForegroundColor Yellow
 $channelsPath = "conf/channels.json"
 if (Test-Path $channelsPath) {
     $channels = Get-Content $channelsPath -Raw | ConvertFrom-Json
@@ -108,19 +101,8 @@ if (Test-Path $channelsPath) {
     Write-Host "  ⚠️  Channels file not found" -ForegroundColor Yellow
 }
 
-# Check 5: Byparr Service
-Write-Host "[5/8] Checking Byparr service..." -ForegroundColor Yellow
-try {
-    $byparrResponse = Invoke-WebRequest -Uri "http://localhost:8191/v1" -Method GET -TimeoutSec 5 -ErrorAction Stop
-    Write-Host "  ✅ Byparr is running and accessible" -ForegroundColor Green
-} catch {
-    $issues += "Byparr service not accessible (required for Cloudflare bypass)"
-    Write-Host "  ❌ Byparr not accessible at http://localhost:8191" -ForegroundColor Red
-    Write-Host "     Error: $($_.Exception.Message)" -ForegroundColor Red
-}
-
-# Check 6: GoOnDVR Executable
-Write-Host "[6/8] Checking GoOnDVR executable..." -ForegroundColor Yellow
+# Check 5: GoOnDVR Executable
+Write-Host "[5/7] Checking GoOnDVR executable..." -ForegroundColor Yellow
 if (Test-Path "goondvr.exe") {
     Write-Host "  ✅ goondvr.exe found" -ForegroundColor Green
 } else {
@@ -128,8 +110,8 @@ if (Test-Path "goondvr.exe") {
     Write-Host "  ⚠️  goondvr.exe not found" -ForegroundColor Yellow
 }
 
-# Check 7: Videos Directory
-Write-Host "[7/8] Checking videos directory..." -ForegroundColor Yellow
+# Check 6: Videos Directory
+Write-Host "[6/7] Checking videos directory..." -ForegroundColor Yellow
 if (Test-Path "videos") {
     $videoFiles = Get-ChildItem -Path "videos" -Recurse -File | Where-Object { $_.Extension -in @('.mp4', '.ts', '.mkv') }
     Write-Host "  ✅ Videos directory exists" -ForegroundColor Green
@@ -144,15 +126,15 @@ if (Test-Path "videos") {
     Write-Host "  ⚠️  Videos directory not found (will be created)" -ForegroundColor Yellow
 }
 
-# Check 8: Internet Connectivity
-Write-Host "[8/8] Checking internet connectivity..." -ForegroundColor Yellow
+# Check 7: Internet Connectivity
+Write-Host "[7/7] Checking internet connectivity..." -ForegroundColor Yellow
 try {
     $chaturbateResponse = Invoke-WebRequest -Uri "https://chaturbate.com" -Method GET -TimeoutSec 10 -ErrorAction Stop
     Write-Host "  ✅ Can reach chaturbate.com" -ForegroundColor Green
     
     if ($chaturbateResponse.Content -match "Just a moment") {
-        $warnings += "Chaturbate is showing Cloudflare challenge (need fresh cookies)"
-        Write-Host "  ⚠️  Cloudflare challenge detected" -ForegroundColor Yellow
+        $warnings += "Chaturbate returned challenge page (need fresh cookies)"
+        Write-Host "  ⚠️  Challenge page detected" -ForegroundColor Yellow
     }
 } catch {
     $issues += "Cannot reach chaturbate.com (check internet/firewall)"
@@ -196,20 +178,14 @@ if ($issues.Count -eq 0 -and $warnings.Count -eq 0) {
         Write-Host ""
     }
     
-    if ($issues -match "Byparr") {
-        Write-Host "2. Start Byparr service:" -ForegroundColor White
-        Write-Host "   docker-compose up -d byparr byparr-lb" -ForegroundColor Gray
-        Write-Host ""
-    }
-    
-    if ($issues -match "cf_clearance" -or $warnings -match "cookies") {
-        Write-Host "3. Get fresh cookies:" -ForegroundColor White
-        Write-Host "   .\scripts\get-fresh-cookies.ps1" -ForegroundColor Gray
+    if ($warnings -match "cookies") {
+        Write-Host "2. Get fresh cookies:" -ForegroundColor White
+        Write-Host "   Extract cookies from browser after logging into Chaturbate" -ForegroundColor Gray
         Write-Host ""
     }
     
     if ($issues -match "Settings file") {
-        Write-Host "4. Create settings file:" -ForegroundColor White
+        Write-Host "3. Create settings file:" -ForegroundColor White
         Write-Host "   Copy settings.json.example to settings.json" -ForegroundColor Gray
         Write-Host ""
     }
