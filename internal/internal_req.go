@@ -6,33 +6,39 @@ import (
         "io"
         "net/http"
         "strings"
+        "sync"
         "time"
 
         "github.com/teacat/chaturbate-dvr/server"
 )
+
+// sharedTransport is a singleton http.Transport reused across all channels.
+// Creating one transport per request (the previous behaviour) exhausts TCP
+// connections and prevents connection reuse.
+var sharedTransport = sync.OnceValue(func() *http.Transport {
+        t := http.DefaultTransport.(*http.Transport).Clone()
+        t.MaxIdleConns = 100
+        t.MaxIdleConnsPerHost = 10
+        return t
+})
 
 // Req represents an HTTP client with customized settings.
 type Req struct {
         client *http.Client
 }
 
-// NewReq creates a new HTTP client with specific transport configurations.
+// NewReq creates a new HTTP client reusing the shared transport.
 func NewReq() *Req {
         return &Req{
                 client: &http.Client{
-                        Transport: CreateTransport(),
+                        Transport: sharedTransport(),
                 },
         }
 }
 
-// CreateTransport initializes a custom HTTP transport.
+// CreateTransport returns the shared transport (kept for backward compatibility).
 func CreateTransport() *http.Transport {
-        // The DefaultTransport allows user changes the proxy settings via environment variables
-        // such as HTTP_PROXY, HTTPS_PROXY.
-        defaultTransport := http.DefaultTransport.(*http.Transport)
-
-        newTransport := defaultTransport.Clone()
-        return newTransport
+        return sharedTransport()
 }
 
 // Get sends an HTTP GET request and returns the response as a string.

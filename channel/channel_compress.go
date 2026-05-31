@@ -49,6 +49,8 @@ var availableEncoders = []videoEncoder{
 
 // detectEncoder finds the best available encoder
 func detectEncoder() (videoEncoder, string) {
+        config.AcquireFFmpeg()
+        defer config.ReleaseFFmpeg()
         for _, enc := range availableEncoders {
                 // Test if encoder is available by running ffmpeg with it
                 cmd := config.FFmpegCommand("-hide_banner", "-f", "lavfi", "-i", "nullsrc=s=256x256:d=1", "-c:v", enc.codec, "-f", "null", "-")
@@ -115,6 +117,8 @@ func (ch *Channel) CompressFile(srcPath string) {
                 args = append(args, encoder.args...)
                 args = append(args, "-c:a", "aac", "-b:a", "128k", mkvPath)
 
+                config.AcquireFFmpeg()
+                defer config.ReleaseFFmpeg()
                 cmd := config.FFmpegCommand(args...)
                 output, err := cmd.CombinedOutput()
                 if err != nil {

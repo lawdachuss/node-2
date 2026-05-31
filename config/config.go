@@ -5,6 +5,7 @@ import (
         "os"
         "os/exec"
         "path/filepath"
+        "runtime"
         "sync"
 
         "github.com/teacat/chaturbate-dvr/entity"
@@ -15,7 +16,20 @@ var (
         ffmpegPath       string
         autoDetectedFF   string
         autoDetectedOnce sync.Once
+
+        // ffmpegSem limits concurrent ffmpeg processes across all channels.
+        // Auto-sized to half the CPU cores (min 1) so CPU-bound ffmpeg jobs
+        // don't thrash the system when many channels finish simultaneously.
+        ffmpegSem chan struct{}
 )
+
+func init() {
+        n := runtime.NumCPU() / 2
+        if n < 1 {
+                n = 1
+        }
+        ffmpegSem = make(chan struct{}, n)
+}
 
 // SetFFmpegPath sets a custom path for the ffmpeg binary.
 func SetFFmpegPath(path string) {
@@ -115,6 +129,16 @@ func FFprobeCommand(args ...string) *exec.Cmd {
 // FFprobeCommandContext is like FFprobeCommand but with a context.
 func FFprobeCommandContext(ctx context.Context, args ...string) *exec.Cmd {
         return exec.CommandContext(ctx, ffprobeBin(), args...)
+}
+
+// AcquireFFmpeg blocks until a ffmpeg slot is available.
+func AcquireFFmpeg() {
+        ffmpegSem <- struct{}{}
+}
+
+// ReleaseFFmpeg releases a ffmpeg slot.
+func ReleaseFFmpeg() {
+        <-ffmpegSem
 }
 
 // HasFFmpeg checks if ffmpeg is available.

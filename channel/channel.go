@@ -64,7 +64,6 @@ type Channel struct {
         cleanupMu        sync.Mutex // serialises Cleanup() calls from concurrent goroutines
         pendingFiles     []pendingFile
 	UploadWg         sync.WaitGroup // tracks in-flight upload goroutines for graceful shutdown
-	uploadSem        chan struct{}  // limits concurrent uploads per channel
 	monitorWg        sync.WaitGroup // tracks the Monitor goroutine lifetime
 }
 
@@ -77,7 +76,6 @@ func New(conf *entity.ChannelConfig) *Channel {
 		Config:          conf,
 		CancelFunc:      func() {},
 		PauseCancelFunc: func() {},
-		uploadSem:       make(chan struct{}, 3),
 	}
         go ch.Publisher()
 

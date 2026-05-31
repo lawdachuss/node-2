@@ -164,9 +164,9 @@ func (ch *Channel) processPendingMuxPair(videoPath, audioPath string) {
                 return
         }
 
-        // Both tracks exist — mux them together.
-        finalOutput := strings.TrimSuffix(videoPath, filepath.Ext(videoPath)) + ".muxed.mp4"
-        if err := ch.MuxAV(videoPath, audioPath, finalOutput); err != nil {
+	// Both tracks exist — mux them together.
+	finalOutput := strings.TrimSuffix(videoPath, filepath.Ext(videoPath)) + ".muxed.mp4"
+	if err := ch.MuxAV(videoPath, audioPath, finalOutput); err != nil {
                 ch.Info("mux: ffmpeg mux failed, trying native fallback: %s", err.Error())
                 if nativeErr := ch.MuxAVNative(videoPath, audioPath, finalOutput); nativeErr != nil {
                         ch.Error("mux failed for %s: %v", filepath.Base(videoPath), nativeErr)
@@ -222,9 +222,9 @@ func (ch *Channel) MoveToOutputDir(srcPath string) string {
 	ch.UploadWg.Add(1)
 		go func() {
 			defer ch.UploadWg.Done()
-			ch.uploadSem <- struct{}{}
+			UploadSem <- struct{}{}
+			defer func() { <-UploadSem }()
 			ch.generatePreviewAndUpload(srcPath)
-			<-ch.uploadSem
 		}()
 		return srcPath
         }
@@ -247,9 +247,9 @@ func (ch *Channel) MoveToOutputDir(srcPath string) string {
 	ch.UploadWg.Add(1)
 	go func() {
 		defer ch.UploadWg.Done()
-		ch.uploadSem <- struct{}{}
+		UploadSem <- struct{}{}
+		defer func() { <-UploadSem }()
 		ch.generatePreviewAndUpload(destPath)
-		<-ch.uploadSem
 	}()
 	return destPath
 }

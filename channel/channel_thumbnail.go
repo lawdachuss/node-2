@@ -65,12 +65,14 @@ func generateThumbnailForFile(videoPath string, info, errFn func(string, ...inte
 	defer probeCancel()
 
 	var dur float64
+	config.AcquireFFmpeg()
 	probeOut, probeErr := config.FFprobeCommandContext(probeCtx,
 		"-v", "error",
 		"-show_entries", "format=duration",
 		"-of", "default=noprint_wrappers=1:nokey=1",
 		videoPath,
 	).Output()
+	config.ReleaseFFmpeg()
 	if probeErr == nil {
 		dur, _ = strconv.ParseFloat(strings.TrimSpace(string(probeOut)), 64)
 	}
@@ -93,6 +95,7 @@ func generateThumbnailForFile(videoPath string, info, errFn func(string, ...inte
 			seekPos = fmt.Sprintf("%.2f", dur*0.1)
 		}
 
+		config.AcquireFFmpeg()
 		err := config.FFmpegCommandContext(thumbCtx,
 			"-y",
 			"-ss", seekPos,
@@ -103,6 +106,7 @@ func generateThumbnailForFile(videoPath string, info, errFn func(string, ...inte
 			"-q:v", "2",
 			thumbJPG,
 		).Run()
+		config.ReleaseFFmpeg()
 
 		if err != nil {
 			errFn("thumb: failed for %s: %v", baseName, err)
@@ -157,6 +161,7 @@ func generateThumbnailForFile(videoPath string, info, errFn func(string, ...inte
 			spriteCols, spriteRows,
 		)
 
+		config.AcquireFFmpeg()
 		err := config.FFmpegCommandContext(spriteCtx,
 			"-y",
 			"-i", videoPath,
@@ -165,6 +170,7 @@ func generateThumbnailForFile(videoPath string, info, errFn func(string, ...inte
 			"-q:v", "2",
 			spriteJPG,
 		).Run()
+		config.ReleaseFFmpeg()
 
 		if err != nil {
 			errFn("sprite: failed for %s: %v", baseName, err)

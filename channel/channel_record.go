@@ -4,6 +4,7 @@ import (
         "context"
         "errors"
         "fmt"
+        "math/rand"
         "strings"
         "time"
 
@@ -67,7 +68,9 @@ func (ch *Channel) Monitor() {
                 }
 
                 customDelay := func(_ uint, err error, _ *retry.Config) time.Duration {
-                        return time.Duration(server.Config.Interval) * time.Minute
+                        base := time.Duration(server.Config.Interval) * time.Minute
+                        jitter := time.Duration(rand.Int63n(31)) * time.Second // 0–30s jitter
+                        return base + jitter
                 }
 
                 if err = retry.Do(
