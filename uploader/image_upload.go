@@ -37,21 +37,44 @@ const (
 	imageUploadBaseDelay  = 2 * time.Second
 )
 
-// Upload tries each host in order until one succeeds.
-// Retries the entire fallback chain up to imageUploadRetries times.
+// Upload uploads to all hosts in parallel and returns the first success.
+// Retries the entire batch up to imageUploadRetries times with backoff.
 func (m *MultiImageUploader) Upload(filePath string) (url, host string, err error) {
+	type result struct {
+		url  string
+		host string
+		err  error
+	}
+
 	var lastErrors []string
 	for attempt := 0; attempt <= imageUploadRetries; attempt++ {
 		if attempt > 0 {
 			time.Sleep(imageUploadBaseDelay * time.Duration(1<<(attempt-1)))
 		}
+
+		ch := make(chan result, len(m.hosts))
 		for _, h := range m.hosts {
-			var upErr error
-			url, upErr = h.upload(filePath)
-			if upErr == nil {
-				return url, h.name, nil
+			h := h
+			go func() {
+				u, e := h.upload(filePath)
+				ch <- result{url: u, host: h.name, err: e}
+			}()
+		}
+
+		var firstErr error
+		for i := 0; i < len(m.hosts); i++ {
+			res := <-ch
+			if res.err == nil {
+				return res.url, res.host, nil
 			}
-			lastErrors = append(lastErrors, fmt.Sprintf("%s: %v", h.name, upErr))
+			lastErrors = append(lastErrors, fmt.Sprintf("%s: %v", res.host, res.err))
+			if firstErr == nil {
+				firstErr = res.err
+			}
+		}
+
+		if firstErr == nil {
+			return "", "", fmt.Errorf("no hosts configured")
 		}
 	}
 	return "", "", fmt.Errorf("all image hosts failed after %d attempts: [%s]", imageUploadRetries+1, strings.Join(lastErrors, "; "))
