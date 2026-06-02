@@ -12,29 +12,32 @@ import (
 )
 
 func embedURLFromLink(host, link string) string {
-        if link == "" {
-                return ""
-        }
+	if link == "" {
+		return ""
+	}
 
-        switch host {
-        case "VOE.sx", "VoeSX":
-                code := link[strings.LastIndex(link, "/")+1:]
-                if code != "" {
-                        return "https://voe.sx/e/" + code
-                }
-        case "Byse":
-                code := link[strings.LastIndex(link, "/")+1:]
-                if code != "" {
-                        return "https://filemoon.sx/e/" + code
-                }
-        case "SendCM":
-                return link
-        case "Streamtape":
-                return link
-        case "Mixdrop":
-                return link
-        }
-        return ""
+	switch host {
+	case "VOE.sx", "VoeSX":
+		code := link[strings.LastIndex(link, "/")+1:]
+		if code != "" {
+			return "https://voe.sx/e/" + code
+		}
+	case "Byse":
+		code := link[strings.LastIndex(link, "/")+1:]
+		if code != "" {
+			return "https://filemoon.sx/e/" + code
+		}
+	case "Streamtape":
+		return link
+	case "Mixdrop":
+		return link
+	case "TurboViPlay":
+		code := link[strings.LastIndex(link, "/")+1:]
+		if code != "" {
+			return "https://emturbovid.com/e/" + code
+		}
+	}
+	return ""
 }
 
 const (
