@@ -1272,8 +1272,13 @@ func (ch *Channel) handleMinDurationAndMerge(videoPath string) bool {
 			ch.Info("min-duration: merged %d segments = %.1fs (< %ds) — still pending", len(segments), mergedDur, minDur)
 			deletePendingSegments(ch.Config.Username)
 			mergedDest := filepath.Join(pendingDir, "merged-"+filepath.Base(destPath))
-			if rErr := os.Rename(mergedPath, mergedDest); rErr != nil {
-				ch.Error("min-duration: cannot keep merged result pending: %v — uploading anyway", rErr)
+			if mErr := os.MkdirAll(pendingDir, 0777); mErr == nil {
+				if rErr := os.Rename(mergedPath, mergedDest); rErr != nil {
+					ch.Error("min-duration: cannot keep merged result pending: %v — uploading anyway", rErr)
+					ch.MoveToOutputDir(mergedPath)
+				}
+			} else {
+				ch.Error("min-duration: cannot recreate pending dir: %v — uploading anyway", mErr)
 				ch.MoveToOutputDir(mergedPath)
 			}
 		}
