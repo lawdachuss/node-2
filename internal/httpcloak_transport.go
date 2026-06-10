@@ -132,13 +132,19 @@ func (t *httpcloakTransport) rotateProxy() bool {
 // TLS session tickets with Cloudflare before any API calls are made.
 // This gives subsequent requests TLS session resumption, making them look
 // more like a returning browser visitor.
+// Uses a single-attempt round trip — warmup is best-effort and should not
+// retry through multiple proxies (that can delay startup by 30s per domain).
 func WarmupChaturbate(ctx context.Context) {
 	req, err := http.NewRequestWithContext(ctx, "HEAD", "https://chaturbate.com/", nil)
 	if err != nil {
 		return
 	}
 	SetRequestHeaders(req)
-	resp, err := getSharedTransport().RoundTrip(req)
+	t, ok := getSharedTransport().(*httpcloakTransport)
+	if !ok {
+		return
+	}
+	resp, err := t.roundTripOnce(req)
 	if err != nil {
 		return
 	}
@@ -154,7 +160,11 @@ func WarmupStripchat(ctx context.Context) {
 		return
 	}
 	SetRequestHeaders(req)
-	resp, err := getSharedTransport().RoundTrip(req)
+	t, ok := getSharedTransport().(*httpcloakTransport)
+	if !ok {
+		return
+	}
+	resp, err := t.roundTripOnce(req)
 	if err != nil {
 		return
 	}
@@ -196,6 +206,73 @@ func isCDNHost(host string) bool {
 	return false
 }
 
+// roundTripOnce executes a single request attempt using the current httpcloak
+// client. No proxy rotation — used by warmup functions (best-effort).
+func (t *httpcloakTransport) roundTripOnce(req *http.Request) (*http.Response, error) {
+	if req.URL.Scheme == "http" || isCDNHost(req.URL.Host) {
+		return http.DefaultTransport.RoundTrip(req)
+	}
+
+	ctx := req.Context()
+	if _, hasDeadline := ctx.Deadline(); !hasDeadline {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, 30*time.Second)
+		defer cancel()
+	}
+
+	var bodyBytes []byte
+	if req.Body != nil {
+		var err error
+		bodyBytes, err = io.ReadAll(req.Body)
+		req.Body.Close()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	t.mu.Lock()
+	client := t.client
+	t.mu.Unlock()
+
+	cloakReq := &httpcloak.Request{
+		Method:  req.Method,
+		URL:     req.URL.String(),
+		Headers: req.Header,
+	}
+	if len(bodyBytes) > 0 {
+		cloakReq.Body = bytes.NewReader(bodyBytes)
+	}
+
+	cloakResp, err := client.Do(ctx, cloakReq)
+	if err != nil {
+		return nil, err
+	}
+
+	body, bodyErr := cloakResp.Bytes()
+	if bodyErr != nil {
+		cloakResp.Close()
+		return nil, bodyErr
+	}
+
+	resp := &http.Response{
+		StatusCode: cloakResp.StatusCode,
+		Header:     make(http.Header),
+		Body:       io.NopCloser(bytes.NewReader(body)),
+		Request:    req,
+	}
+	if cloakResp.Headers != nil {
+		for k, vs := range cloakResp.Headers {
+			for _, v := range vs {
+				resp.Header.Add(k, v)
+			}
+		}
+	}
+	return resp, nil
+}
+
+// RoundTrip implements http.RoundTripper. CDN requests bypass the proxy
+// entirely. API requests use httpcloak with the SOCKS5 proxy, and
+// automatically rotate to the next proxy on connection failure.
 func (t *httpcloakTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	if req.URL.Scheme == "http" || isCDNHost(req.URL.Host) {
 		return http.DefaultTransport.RoundTrip(req)
@@ -208,6 +285,7 @@ func (t *httpcloakTransport) RoundTrip(req *http.Request) (*http.Response, error
 		defer cancel()
 	}
 
+	// Prepare request body once, reuse across retries
 	var bodyBytes []byte
 	if req.Body != nil {
 		var err error
