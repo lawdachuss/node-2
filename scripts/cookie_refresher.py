@@ -13,6 +13,7 @@ ALL_PROXY env var is used automatically (set by workflow step).
 import json
 import os
 import sys
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -183,7 +184,7 @@ def main():
     session_kwargs = {
         "headless": True,
         "solve_cloudflare": True,
-        "timeout": 120000,
+        "timeout": 90000,
         "block_webrtc": True,
         "hide_canvas": True,
         "network_idle": False,
@@ -195,24 +196,38 @@ def main():
     if cookie_str:
         session_kwargs["cookies"] = cookies_to_playwright_format(cookie_str)
 
-    max_retries = 2
-    for attempt in range(1, max_retries + 1):
+    HARD_TIMEOUT = 100  # seconds — kill entire Scrapling if it hangs
+
+    def _run_scrapling(result_container):
         try:
             with StealthySession(**session_kwargs) as session:
                 session.fetch(
                     "https://chaturbate.com",
                     page_action=capture_cookies,
-                    wait=5000,
+                    wait=3000,
                 )
-            break  # success
+            result_container["done"] = True
         except Exception as e:
-            print(f"  [WARN] Attempt {attempt}/{max_retries} failed: {e}")
-            if attempt < max_retries:
-                print(f"  Retrying in 5s...")
-                time.sleep(5)
-            else:
-                print(f"  [ERROR] All attempts failed")
-                return
+            result_container["error"] = str(e)
+
+    max_retries = 2
+    for attempt in range(1, max_retries + 1):
+        result = {}
+        t = threading.Thread(target=_run_scrapling, args=(result,), daemon=True)
+        t.start()
+        t.join(timeout=HARD_TIMEOUT)
+        if t.is_alive():
+            print(f"  [WARN] Attempt {attempt}/{max_retries} timed out after {HARD_TIMEOUT}s — browser may be hung")
+        elif result.get("error"):
+            print(f"  [WARN] Attempt {attempt}/{max_retries} failed: {result['error']}")
+        else:
+            break  # success
+        if attempt < max_retries:
+            print(f"  Retrying in 5s...")
+            time.sleep(5)
+        else:
+            print(f"  [ERROR] All attempts failed")
+            return
 
     if not new_browser_cookies:
         print("  [WARN] No cookies returned from browser — keeping existing")
