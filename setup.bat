@@ -206,8 +206,6 @@ REM -- Copy .env if missing --
 if not exist "%ProjectDir%\.env" (
     copy "%ProjectDir%\.env.example" "%ProjectDir%\.env" >nul
     echo.>>"%ProjectDir%\.env"
-    echo # Safety: don't delete local files after upload>>"%ProjectDir%\.env"
-    echo DELETE_LOCAL_AFTER_UPLOAD=false>>"%ProjectDir%\.env"
     echo   [INFO] Created .env from .env.example -- edit it with your API keys!
 )
 

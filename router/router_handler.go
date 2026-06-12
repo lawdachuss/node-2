@@ -953,7 +953,7 @@ func ServeLiveThumb(c *gin.Context) {
 	}
 
 	if newest != "" {
-		cachePath := filepath.Join(os.TempDir(), "opencode-thumb-"+username+".jpg")
+		cachePath := filepath.Join(os.TempDir(), "opencode-thumb-"+username+".webp")
 		var thumbOK bool
 
 		// Try up to 3 approaches:
@@ -974,7 +974,8 @@ func ServeLiveThumb(c *gin.Context) {
 					"-i", newest,
 					"-vframes", "1",
 					"-vf", "scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2",
-					"-q:v", "2",
+					"-c:v", "libwebp",
+					"-quality", "80",
 					cachePath,
 				)
 			case 1:
@@ -982,7 +983,8 @@ func ServeLiveThumb(c *gin.Context) {
 					"-i", newest,
 					"-vframes", "1",
 					"-vf", "scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2",
-					"-q:v", "2",
+					"-c:v", "libwebp",
+					"-quality", "80",
 					cachePath,
 				)
 			case 2:
@@ -991,7 +993,8 @@ func ServeLiveThumb(c *gin.Context) {
 					"-i", newest,
 					"-vframes", "1",
 					"-vf", "scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2",
-					"-q:v", "2",
+					"-c:v", "libwebp",
+					"-quality", "80",
 					cachePath,
 				)
 			}

@@ -29,7 +29,7 @@ func TestUploadTrackerNormalizesPaths(t *testing.T) {
 	}
 }
 
-func TestPipelineCleanupKeepsPartialUploads(t *testing.T) {
+func TestPipelineCleanupDeletesWithAnyLink(t *testing.T) {
 	oldConfig := server.Config
 	defer func() { server.Config = oldConfig }()
 	server.Config = &entity.Config{
@@ -55,17 +55,73 @@ func TestPipelineCleanupKeepsPartialUploads(t *testing.T) {
 	}
 
 	if err := p.stageCleanup(ch); err != nil {
-		t.Fatalf("stageCleanup partial: %v", err)
-	}
-	if _, err := os.Stat(filePath); err != nil {
-		t.Fatalf("partial upload file was removed: %v", err)
-	}
-
-	p.Links["PixelDrain"] = "https://pixeldrain.example/video"
-	if err := p.stageCleanup(ch); err != nil {
-		t.Fatalf("stageCleanup complete: %v", err)
+		t.Fatalf("stageCleanup: %v", err)
 	}
 	if _, err := os.Stat(filePath); !os.IsNotExist(err) {
-		t.Fatalf("complete upload file still exists or stat failed: %v", err)
+		t.Fatalf("file should have been removed with at least 1 uploaded link: %v", err)
+	}
+}
+
+func TestPipelineCleanupKeepsWhenNoLinks(t *testing.T) {
+	oldConfig := server.Config
+	defer func() { server.Config = oldConfig }()
+	server.Config = &entity.Config{
+		DeleteLocalAfterUpload: true,
+	}
+
+	dir := t.TempDir()
+	filePath := filepath.Join(dir, "nolinks.mp4")
+	if err := os.WriteFile(filePath, []byte("video"), 0o666); err != nil {
+		t.Fatalf("write video: %v", err)
+	}
+
+	ch := &Channel{
+		Config:   &entity.ChannelConfig{Username: "tester"},
+		LogCh:    make(chan string, 20),
+		UpdateCh: make(chan bool, 1),
+	}
+	p := &Pipeline{
+		FilePath: filePath,
+		Filename: filepath.Base(filePath),
+		Links:    map[string]string{},
+	}
+
+	if err := p.stageCleanup(ch); err != nil {
+		t.Fatalf("stageCleanup: %v", err)
+	}
+	if _, err := os.Stat(filePath); err != nil {
+		t.Fatalf("file should be kept when no links exist: %v", err)
+	}
+}
+
+func TestPipelineCleanupWhenDisabled(t *testing.T) {
+	oldConfig := server.Config
+	defer func() { server.Config = oldConfig }()
+	server.Config = &entity.Config{
+		DeleteLocalAfterUpload: false,
+	}
+
+	dir := t.TempDir()
+	filePath := filepath.Join(dir, "disabled.mp4")
+	if err := os.WriteFile(filePath, []byte("video"), 0o666); err != nil {
+		t.Fatalf("write video: %v", err)
+	}
+
+	ch := &Channel{
+		Config:   &entity.ChannelConfig{Username: "tester"},
+		LogCh:    make(chan string, 20),
+		UpdateCh: make(chan bool, 1),
+	}
+	p := &Pipeline{
+		FilePath: filePath,
+		Filename: filepath.Base(filePath),
+		Links:    map[string]string{"GoFile": "https://gofile.example/video"},
+	}
+
+	if err := p.stageCleanup(ch); err != nil {
+		t.Fatalf("stageCleanup: %v", err)
+	}
+	if _, err := os.Stat(filePath); err != nil {
+		t.Fatalf("file should be kept when delete after upload is disabled: %v", err)
 	}
 }

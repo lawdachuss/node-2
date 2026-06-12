@@ -236,10 +236,10 @@ func (ch *Channel) uploadFile(filePath string, thumbURL, spriteURL, previewURL s
 		// Delete local file only once ALL hosts have the file safely AND
 		// the metadata is persisted.  If the DB save failed, the journal
 		// was cleared above so the upload retries and generates fresh links.
-		if server.Config != nil && server.Config.DeleteLocalAfterUpload && len(success) >= len(allHosts) && dbSaved {
+		if server.Config != nil && server.Config.DeleteLocalAfterUpload && len(success) > 0 && dbSaved {
 			_ = os.Remove(filePath)
 			// Also clean up any associated preview sidecar files
-			for _, suffix := range []string{".thumb.jpg", ".sprite.jpg", ".preview.gif", ".thumb", ".sprite"} {
+			for _, suffix := range []string{".thumb.webp", ".sprite.webp", ".preview.webp", ".thumb", ".sprite"} {
 				_ = os.Remove(filePath + suffix)
 			}
 			// Clean up journal entries since local file is gone

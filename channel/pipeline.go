@@ -484,9 +484,8 @@ func (p *Pipeline) stageCleanup(ch *Channel) error {
 		return nil
 	}
 
-	if !p.hasAllConfiguredHosts() {
-		ch.Info("cleanup: keeping %s because only %d/%d configured hosts uploaded",
-			p.Filename, len(p.Links), len(configuredUploadHosts()))
+	if len(p.Links) == 0 {
+		ch.Info("cleanup: keeping %s because no upload links exist", p.Filename)
 		return nil
 	}
 

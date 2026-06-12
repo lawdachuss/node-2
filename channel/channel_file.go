@@ -322,9 +322,9 @@ func videoExt(name string) bool {
 // Note: .video.muxed.mp4 is the final muxed output (not a sidecar), while
 // .video.mp4 and .audio.mp4 are raw A/V track files (sidecars).
 func isSidecar(name string) bool {
-	return strings.HasSuffix(name, ".thumb.jpg") ||
-		strings.HasSuffix(name, ".sprite.jpg") ||
-		strings.HasSuffix(name, ".preview.gif") ||
+	return strings.HasSuffix(name, ".thumb.webp") ||
+		strings.HasSuffix(name, ".sprite.webp") ||
+		strings.HasSuffix(name, ".preview.webp") ||
 		strings.HasSuffix(name, ".thumb") ||
 		strings.HasSuffix(name, ".sprite") ||
 		strings.HasSuffix(name, ".video.mp4") ||
@@ -795,7 +795,7 @@ func CleanupOrphanedFiles() {
 		processAllPendingSegments()
 
 		// Clean up orphaned sidecar files whose main video no longer exists
-		sidecarExts := []string{".thumb.jpg", ".sprite.jpg", ".preview.gif", ".thumb", ".sprite"}
+		sidecarExts := []string{".thumb.webp", ".sprite.webp", ".preview.webp", ".thumb", ".sprite"}
 		for _, e := range entries {
 			if e.IsDir() {
 				continue
@@ -825,7 +825,7 @@ func CleanupOrphanedFiles() {
 
 // DeleteSidecarFiles removes preview sidecar files associated with a video path.
 func DeleteSidecarFiles(videoPath string) {
-	for _, suffix := range []string{".thumb.jpg", ".sprite.jpg", ".preview.gif", ".thumb", ".sprite"} {
+	for _, suffix := range []string{".thumb.webp", ".sprite.webp", ".preview.webp", ".thumb", ".sprite"} {
 		os.Remove(videoPath + suffix)
 	}
 }
@@ -1175,7 +1175,7 @@ func UploadOrphanedFile(filePath, thumbURL, spriteURL, previewURL string) bool {
 
 	// Delete local file only once ALL hosts have the file safely and metadata
 	// is persisted. Otherwise the file remains available for retry.
-	if cfg.DeleteLocalAfterUpload && len(success) >= len(allHosts) && dbSaved {
+	if cfg.DeleteLocalAfterUpload && len(success) > 0 && dbSaved {
 		os.Remove(filePath)
 		DeleteSidecarFiles(filePath)
 		if fileHash != "" {

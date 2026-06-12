@@ -97,9 +97,9 @@ func videoExt(name string) bool {
 // Note: .video.muxed.mp4 is the final muxed output (not a sidecar), while
 // .video.mp4 and .audio.mp4 are raw A/V track files (sidecars).
 func isSidecar(name string) bool {
-	return strings.HasSuffix(name, ".thumb.jpg") ||
-		strings.HasSuffix(name, ".sprite.jpg") ||
-		strings.HasSuffix(name, ".preview.gif") ||
+	return strings.HasSuffix(name, ".thumb.webp") ||
+		strings.HasSuffix(name, ".sprite.webp") ||
+		strings.HasSuffix(name, ".preview.webp") ||
 		strings.HasSuffix(name, ".thumb") ||
 		strings.HasSuffix(name, ".sprite") ||
 		strings.HasSuffix(name, ".video.mp4") ||

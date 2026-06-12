@@ -132,7 +132,6 @@ if (-not $python) {
 # ── Copy .env if missing ──────────────────────────────────
 if (-not (Test-Path "$ProjectDir\.env")) {
     Copy-Item "$ProjectDir\.env.example" "$ProjectDir\.env"
-    Add-Content "$ProjectDir\.env" "`n# Safety: don't delete local files after upload`nDELETE_LOCAL_AFTER_UPLOAD=false"
     Write-Host "  📝 Created .env from .env.example — edit it with your API keys!" -ForegroundColor Yellow
 }
 
