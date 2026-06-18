@@ -395,6 +395,22 @@ func (p *Pipeline) stageUploadVideos(ch *Channel) error {
 	return nil
 }
 
+// posterFromHosts checks if any host provided an auto-generated poster URL.
+func (p *Pipeline) posterFromHosts() string {
+	if embedURL, ok := p.Links["SeekStreaming"]; ok {
+		videoID := uploader.ExtractSeekStreamingVideoID(embedURL)
+		if videoID != "" {
+			if cfg := server.Config; cfg != nil && cfg.SeekStreamingKey != "" {
+				posterURL, err := uploader.GetSeekStreamingPosterURL(cfg.SeekStreamingKey, videoID)
+				if err == nil && posterURL != "" {
+					return posterURL
+				}
+			}
+		}
+	}
+	return ""
+}
+
 // stageSaveMetadata persists recording metadata and all links to Supabase.
 func (p *Pipeline) stageSaveMetadata(ch *Channel) error {
 	// Retry thumbnail generation if it failed during StageThumbnailUpload.
@@ -405,6 +421,9 @@ func (p *Pipeline) stageSaveMetadata(ch *Channel) error {
 			p.SpriteURL = spriteURL
 			p.PreviewURL = previewURL
 			ch.Info("upload: generated thumbnails for %s (retry)", p.Filename)
+		} else if pu := p.posterFromHosts(); pu != "" {
+			p.ThumbURL = pu
+			ch.Info("upload: using auto-generated poster from host as thumbnail for %s", p.Filename)
 		} else {
 			ch.Warn("upload: thumbnail generation failed for %s (skipped)", p.Filename)
 		}

@@ -194,6 +194,45 @@ func (u *SeekStreamingUploader) uploadFileTUS(uploadURL, filePath string, progre
 	return "", fmt.Errorf("tus upload status %d: %s", resp.StatusCode, string(body))
 }
 
+func ExtractSeekStreamingVideoID(embedURL string) string {
+	if idx := strings.LastIndex(embedURL, "#"); idx >= 0 {
+		return embedURL[idx+1:]
+	}
+	return ""
+}
+
+func GetSeekStreamingPosterURL(key, videoID string) (string, error) {
+	client := &http.Client{Timeout: 30 * time.Second}
+	req, err := http.NewRequest("GET", fmt.Sprintf("https://seekstreaming.com/api/v1/video/manage/%s", videoID), nil)
+	if err != nil {
+		return "", fmt.Errorf("create request: %w", err)
+	}
+	req.Header.Set("api-token", key)
+	req.Header.Set("User-Agent", defaultUserAgent)
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("status %d", resp.StatusCode)
+	}
+
+	var detail struct {
+		Poster   string `json:"poster"`
+		AssetURL string `json:"assetUrl"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&detail); err != nil {
+		return "", fmt.Errorf("decode: %w", err)
+	}
+	if detail.Poster == "" || detail.AssetURL == "" {
+		return "", fmt.Errorf("no poster available")
+	}
+	return detail.AssetURL + detail.Poster, nil
+}
+
 func mimeTypeByExt(ext string) string {
 	switch strings.ToLower(ext) {
 	case ".mp4":
