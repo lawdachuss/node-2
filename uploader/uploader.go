@@ -109,6 +109,7 @@ type MultiHostUploader struct {
 	mixdrop    *MixdropUploader
 	seekstreaming *SeekStreamingUploader
 	log        Logger
+	hostInitOnce sync.Once
 	hosts      map[string]uploaderFunc // host name -> upload function, lazy-init
 	progress   ProgressFunc
 }
@@ -116,23 +117,22 @@ type MultiHostUploader struct {
 type uploaderFunc func(string, ProgressFunc) (string, error)
 
 func (m *MultiHostUploader) initHosts() {
-	if m.hosts != nil {
-		return
-	}
-	m.hosts = map[string]uploaderFunc{}
-	m.hosts["GoFile"] = m.gofile.UploadWithProgress
-	if m.voesx != nil && m.voesx.apiKey != "" {
-		m.hosts["VOE.sx"] = m.voesx.UploadWithProgress
-	}
-	if m.streamtape != nil && m.streamtape.login != "" && m.streamtape.key != "" {
-		m.hosts["Streamtape"] = m.streamtape.UploadWithProgress
-	}
-	if m.mixdrop != nil && m.mixdrop.email != "" && m.mixdrop.token != "" {
-		m.hosts["Mixdrop"] = m.mixdrop.UploadWithProgress
-	}
-	if m.seekstreaming != nil && m.seekstreaming.key != "" {
-		m.hosts["SeekStreaming"] = m.seekstreaming.UploadWithProgress
-	}
+	m.hostInitOnce.Do(func() {
+		m.hosts = map[string]uploaderFunc{}
+		m.hosts["GoFile"] = m.gofile.UploadWithProgress
+		if m.voesx != nil && m.voesx.apiKey != "" {
+			m.hosts["VOE.sx"] = m.voesx.UploadWithProgress
+		}
+		if m.streamtape != nil && m.streamtape.login != "" && m.streamtape.key != "" {
+			m.hosts["Streamtape"] = m.streamtape.UploadWithProgress
+		}
+		if m.mixdrop != nil && m.mixdrop.email != "" && m.mixdrop.token != "" {
+			m.hosts["Mixdrop"] = m.mixdrop.UploadWithProgress
+		}
+		if m.seekstreaming != nil && m.seekstreaming.key != "" {
+			m.hosts["SeekStreaming"] = m.seekstreaming.UploadWithProgress
+		}
+	})
 }
 
 // NewMultiHostUploader creates a new multi-host uploader
@@ -182,6 +182,7 @@ func (m *MultiHostUploader) UploadSelected(filePath string, hosts []string) []Up
 	var mu sync.Mutex
 	results := []UploadResult{}
 
+	progressFn := m.progress
 	for _, name := range hosts {
 		uploadFn, ok := m.hosts[name]
 		if !ok {
@@ -191,7 +192,7 @@ func (m *MultiHostUploader) UploadSelected(filePath string, hosts []string) []Up
 		go func(host string, fn uploaderFunc) {
 			defer wg.Done()
 			m.log.Info("upload: starting %s upload for %s", host, filePath)
-			link, err := fn(filePath, m.progress)
+			link, err := fn(filePath, progressFn)
 			mu.Lock()
 			results = append(results, UploadResult{
 				Host:         host,
@@ -228,6 +229,7 @@ func (m *MultiHostUploader) UploadSelectedPriority(filePath string, hosts []stri
 	}
 
 	var results []UploadResult
+	progressFn := m.progress
 
 	for _, host := range priorityHosts {
 		fn, ok := m.hosts[host]
@@ -235,7 +237,7 @@ func (m *MultiHostUploader) UploadSelectedPriority(filePath string, hosts []stri
 			continue
 		}
 		m.log.Info("upload: priority upload to %s for %s", host, filePath)
-		link, err := fn(filePath, m.progress)
+		link, err := fn(filePath, progressFn)
 		results = append(results, UploadResult{Host: host, DownloadLink: link, Error: err})
 		if err != nil {
 			m.log.Error("upload: %s (priority) failed for %s: %v", host, filePath, err)

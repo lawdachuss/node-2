@@ -92,9 +92,9 @@ func (ch *Channel) Cleanup(mode CloseMode) error {
 			ch.Error("cleanup: audio file close: %s", err.Error())
 		}
 
+		ch.stateMu.Lock()
 		ch.File = nil
 		ch.AudioFile = nil
-		ch.stateMu.Lock()
 		ch.CurrentFilename = ""
 		ch.Filesize = 0
 		ch.Duration = 0
@@ -1318,6 +1318,7 @@ func mergeVideos(inputs []string, outputPath string) error {
 	if err != nil {
 		return fmt.Errorf("create concat list: %w", err)
 	}
+	defer listFile.Close()
 	defer os.Remove(listFile.Name())
 
 	for _, p := range inputs {
@@ -1328,11 +1329,9 @@ func mergeVideos(inputs []string, outputPath string) error {
 		// Escape single quotes for ffmpeg's concat demuxer.
 		escaped := strings.ReplaceAll(abs, "'", "'\\''")
 		if _, wErr := fmt.Fprintf(listFile, "file '%s'\n", escaped); wErr != nil {
-			listFile.Close()
 			return fmt.Errorf("write concat list: %w", wErr)
 		}
 	}
-	listFile.Close()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 	defer cancel()
