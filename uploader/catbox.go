@@ -5,15 +5,11 @@ import (
 	"fmt"
 	"io"
 	"mime/multipart"
-	"net"
 	"net/http"
-	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
-
-	"golang.org/x/net/proxy"
 )
 
 // CatboxUploader handles uploading images to Catbox.moe.
@@ -23,8 +19,8 @@ type CatboxUploader struct {
 }
 
 // NewCatboxUploader creates a new Catbox.moe uploader.
-// If ALL_PROXY is set to a SOCKS5 URL, the client routes through that proxy.
-// Otherwise it connects directly (no env proxy).
+// Always connects directly — Catbox is CDN-backed and accessible from any IP.
+// The SOCKS5 proxy is only needed for Chaturbate/Stripchat stream access.
 func NewCatboxUploader() *CatboxUploader {
 	transport := &http.Transport{
 		MaxIdleConns:          100,
@@ -34,40 +30,12 @@ func NewCatboxUploader() *CatboxUploader {
 		ExpectContinueTimeout: 1 * time.Second,
 	}
 
-	if addr := socks5ProxyFromEnv(); addr != "" {
-		dialer, err := proxy.SOCKS5("tcp", addr, nil, proxy.Direct)
-		if err == nil {
-			transport.DialContext = dialer.(proxy.ContextDialer).DialContext
-		}
-	}
-
 	return &CatboxUploader{
 		client: &http.Client{
 			Timeout:   2 * time.Minute,
 			Transport: transport,
 		},
 	}
-}
-
-// socks5ProxyFromEnv returns the SOCKS5 proxy address from ALL_PROXY / all_proxy
-// env vars, or empty string if none is set. Ignores non-SOCKS5 URLs.
-func socks5ProxyFromEnv() string {
-	for _, key := range []string{"ALL_PROXY", "all_proxy"} {
-		if v := os.Getenv(key); v != "" {
-			u, err := url.Parse(v)
-			if err != nil {
-				continue
-			}
-			if u.Scheme == "socks5" || u.Scheme == "socks5h" {
-				host := u.Host
-				if u.Port() == "" {
-					host = net.JoinHostPort(u.Host, "1080")
-				}
-				return host
-			}
-		}
-	}
-	return ""
 }
 
 // Upload uploads a file to Catbox.moe and returns the direct file URL.
