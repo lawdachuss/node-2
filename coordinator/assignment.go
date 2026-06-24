@@ -62,7 +62,16 @@ func (c *Coordinator) ReleaseChannel(username, site string) {
 // runClaimCycle executes one iteration of the fair-share claiming algorithm.
 // Claims channels if this node has less than its fair share, releases channels
 // if it has more than its fair share (only when multiple nodes are alive).
+// Skips entirely when draining (graceful shutdown in progress).
 func (c *Coordinator) runClaimCycle() {
+	// Don't claim new channels during draining — the node is shutting down
+	// and new channels would just need to be released immediately.
+	c.mu.Lock()
+	draining := c.draining
+	c.mu.Unlock()
+	if draining {
+		return
+	}
 	// Self-heal: repair rows stuck with assigned_node set but status=unassigned.
 	// These rows are invisible to both claim and release, causing a deadlock.
 	if repaired, err := c.Client.RepairOrphanedAssignments(); err != nil {

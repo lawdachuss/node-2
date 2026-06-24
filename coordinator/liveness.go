@@ -40,12 +40,24 @@ func (c *Coordinator) StartLiveCheckLoop(ctx context.Context) {
 
 // runLiveCheck checks all channels in the pool and updates their is_live status.
 // Reads directly from channel_assignments (the source of truth in pooled mode).
+// Uses a 2-minute timeout to prevent a single stuck API call from hanging
+// the goroutine indefinitely. Skips entirely when draining.
 func (c *Coordinator) runLiveCheck() {
 	if c.LiveCheck == nil {
 		return
 	}
 
-	ctx := context.Background()
+	// Don't check liveness during draining — the node is shutting down.
+	c.mu.Lock()
+	if c.draining {
+		c.mu.Unlock()
+		return
+	}
+	c.mu.Unlock()
+
+	// Use a timeout so a hung HTTP call cannot leak this goroutine forever.
+	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	defer cancel()
 
 	// Read all channel assignments — this is the source of truth, not the
 	// channel_pool app_settings blob (which is never written in pooled mode).

@@ -103,15 +103,24 @@ func (c *Coordinator) Start(ctx context.Context) {
 }
 
 // Stop gracefully shuts down all coordinator loops and deregisters the node.
+// Safe to call multiple times — the second call is a no-op.
 func (c *Coordinator) Stop() {
 	if !c.IsPooled() {
 		return
 	}
 
-	log.Printf("[coordinator] stopping node %q", c.NodeID)
+	// Guard against double-close panic.
+	c.mu.Lock()
+	select {
+	case <-c.stopCh:
+		c.mu.Unlock()
+		return // already closed
+	default:
+		close(c.stopCh)
+	}
+	c.mu.Unlock()
 
-	// Signal all loops to stop
-	close(c.stopCh)
+	log.Printf("[coordinator] stopping node %q", c.NodeID)
 
 	// Wait for goroutines to finish
 	c.wg.Wait()
@@ -197,15 +206,24 @@ func (c *Coordinator) currentLoad() int {
 	return count
 }
 
-// detectNodeID auto-detects the node identity.
+// detectNodeID auto-detects the node identity using a priority chain:
+// 1. NODE_ID env var (explicit)
+// 2. GITHUB_REPOSITORY env var — splits by "-" and takes the last segment
+//    so "owner/MiniDelectableService-node-a" yields "a"
+// 3. os.Hostname() (VPS / local)
+// 4. Random fallback (defensive)
+//
+// IMPORTANT: this must stay in sync with server/db.go:detectNodeID().
 func detectNodeID() string {
 	if id := os.Getenv("NODE_ID"); id != "" {
 		return id
 	}
 	if repo := os.Getenv("GITHUB_REPOSITORY"); repo != "" {
-		// "owner/MiniDelectableService-node-a" -> "MiniDelectableService-node-a"
-		parts := strings.Split(repo, "/")
-		return parts[len(parts)-1]
+		parts := strings.Split(repo, "-")
+		if len(parts) > 1 {
+			return parts[len(parts)-1]
+		}
+		return strings.ReplaceAll(repo, "/", "-")
 	}
 	if host, err := os.Hostname(); err == nil && host != "" {
 		return host

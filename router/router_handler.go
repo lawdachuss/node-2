@@ -1178,10 +1178,11 @@ func ServeLiveThumb(c *gin.Context) {
 		// 1 — no special flags (standard MOV demuxer, works for completed files)
 		// 2 — seek near the end (avoid blank first frame in completed files)
 		for attempt := 0; attempt < 3 && !thumbOK; attempt++ {
-			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-			defer cancel()
-			config.AcquireFFmpeg()
-			defer config.ReleaseFFmpeg()
+			func() {
+				ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+				defer cancel()
+				config.AcquireFFmpeg()
+				defer config.ReleaseFFmpeg()
 			args := []string{"-y"}
 			switch attempt {
 			case 0:
@@ -1229,6 +1230,7 @@ func ServeLiveThumb(c *gin.Context) {
 					c.Data(http.StatusOK, ct, data)
 				}
 			}
+		}()
 		}
 		if thumbOK {
 			return
