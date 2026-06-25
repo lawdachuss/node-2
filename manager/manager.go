@@ -35,7 +35,7 @@ type renderCacheEntry struct {
 // field displayed in the channel_info template changes. This is used
 // to skip redundant template renders + SSE pushes.
 func channelInfoFingerprint(info *entity.ChannelInfo) string {
-	return fmt.Sprintf("%t|%t|%t|%t|%s|%s|%s|%s|%s|%s|%.0f|%s",
+	return fmt.Sprintf("%t|%t|%t|%t|%s|%s|%s|%s|%s|%s|%.0f|%s|%s",
 		info.IsOnline,
 		info.IsConnecting,
 		info.IsPaused,
@@ -48,6 +48,7 @@ func channelInfoFingerprint(info *entity.ChannelInfo) string {
 		info.UploadStatus,
 		info.UploadProgress,
 		info.UploadFilename,
+		info.LastError,
 	)
 }
 
@@ -368,6 +369,15 @@ func (m *Manager) CreateChannelFromAssignment(ca *database.ChannelAssignment) er
 	ch := thing.(*channel.Channel)
 	ch.PipelineQueue.ResumePending()
 	ch.Resume(0)
+
+	// Restart the session loop if it exited (e.g. when channels were claimed after
+	// an empty startup).  If the session is already active this is a no-op.
+	// Newly claimed channels then participate in the next session boundary
+	// (stop → process → upload → resume cycle).
+	m.sessionMu.Lock()
+	dur := m.sessionDuration
+	m.sessionMu.Unlock()
+	m.StartSession(dur)
 
 	fmt.Printf("[manager] created channel from assignment: %s/%s\n", ca.Site, ca.Username)
 	return nil
@@ -697,6 +707,7 @@ func (m *Manager) StartSession(d time.Duration) {
 		return
 	}
 	m.sessionMu.Lock()
+	m.sessionDuration = d // persist so CreateChannelFromAssignment can restart the session later
 	if m.sessionStarted {
 		m.sessionMu.Unlock()
 		return

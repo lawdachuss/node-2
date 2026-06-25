@@ -48,6 +48,10 @@ type Channel struct {
 
 	stateMu sync.Mutex // protects IsOnline, IsConnecting, RoomStatus, Duration, Filesize
 
+	// LastError holds the most recent API/recording error message for diagnostic display.
+	// Set by the Monitor retry loop whenever an attempt fails.
+	LastError string
+
 	RoomTitle    string   // captured from API at recording start
 	Tags         []string // captured from API at recording start
 	Viewers      int      // captured from API at recording start
@@ -134,7 +138,9 @@ func (ch *Channel) Publisher() {
 				ch.Logs = ch.Logs[len(ch.Logs)-100:]
 			}
 			ch.logsMu.Unlock()
-			server.Manager.PublishLog(ch.Config.Username, v)
+			if server.Manager != nil {
+				server.Manager.PublishLog(ch.Config.Username, v)
+			}
 
 		case <-ch.UpdateCh:
 			if !pendingUpdate {
@@ -143,7 +149,9 @@ func (ch *Channel) Publisher() {
 			}
 		case <-updateTimer.C:
 			pendingUpdate = false
-			server.Manager.Publish(entity.EventUpdate, ch.ExportStatusInfo())
+			if server.Manager != nil {
+				server.Manager.Publish(entity.EventUpdate, ch.ExportStatusInfo())
+			}
 		case <-ch.done:
 			updateTimer.Stop()
 			return
@@ -194,6 +202,19 @@ func (ch *Channel) Error(format string, a ...any) {
 		log.Printf(" WARN [%s] log queue full, dropped: %s", ch.Config.Username, msg)
 	}
 	log.Printf("ERROR [%s] %s", ch.Config.Username, fmt.Sprintf(format, a...))
+}
+
+// SetLastError records the most recent recording error for diagnostic display.
+// Safe for concurrent calls from the Monitor retry loop.
+func (ch *Channel) SetLastError(err error) {
+	ch.stateMu.Lock()
+	if err != nil {
+		ch.LastError = err.Error()
+	} else {
+		ch.LastError = ""
+	}
+	ch.stateMu.Unlock()
+	ch.Update()
 }
 
 // SetUploadProgress updates live upload status visible in the UI.
@@ -269,6 +290,7 @@ func (ch *Channel) exportInfo(includeLogs bool) *entity.ChannelInfo {
 	hasSeparateAudio := ch.HasSeparateAudio
 	hasFile := ch.File != nil
 	liveThumbURL := ch.LiveThumbURL
+	lastError := ch.LastError
 	var fileName string
 	if hasFile {
 		fileName = ch.File.Name()
@@ -327,6 +349,7 @@ func (ch *Channel) exportInfo(includeLogs bool) *entity.ChannelInfo {
 		UploadStatus:   uploadStatus,
 		UploadProgress: uploadProgress,
 		UploadFilename: uploadFilename,
+		LastError:      lastError,
 	}
 }
 
@@ -451,6 +474,9 @@ func (ch *Channel) UpdateOnlineStatus(isOnline bool) {
 	ch.stateMu.Lock()
 	ch.IsOnline = isOnline
 	ch.IsConnecting = false
+	if isOnline {
+		ch.LastError = ""
+	}
 	ch.stateMu.Unlock()
 	ch.Update()
 }

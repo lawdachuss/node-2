@@ -43,17 +43,14 @@ func (s *ChaturbateSite) FetchStream(ctx context.Context, req *internal.Req, use
 func (s *ChaturbateSite) GetRoomStatus(ctx context.Context, req *internal.Req, username string) (string, error) {
 	apiURL := fmt.Sprintf("%sapi/chatvideocontext/%s/", server.Config.Domain, username)
 
-	if !internal.AllowChaturbateRequest() {
-		return "", fmt.Errorf("circuit breaker open: %w", internal.ErrChannelOffline)
-	}
+	// NOTE: No circuit breaker check here. The GET (chatvideocontext) endpoint
+	// only needs cookies (no CSRF). The circuit breaker only gates the POST HLS
+	// endpoint — it must not block liveness checks or recording fallback.
 
 	var body string
 	err := retry.Do(func() error {
 		if err := internal.WaitForChaturbateRateLimit(ctx); err != nil {
 			return err
-		}
-		if !internal.AllowChaturbateRequest() {
-			return fmt.Errorf("circuit breaker open: %w", internal.ErrChannelOffline)
 		}
 
 		var e error

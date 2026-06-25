@@ -80,6 +80,7 @@ type ChannelInfo struct {
 	UploadStatus   string  // human-readable upload status (empty = idle)
 	UploadProgress float64 // 0–100 upload progress estimate
 	UploadFilename string  // file currently being uploaded
+	LastError      string  // most recent recording error for admin diagnostics
 }
 
 // HostEntry holds live upload progress for a single host.

@@ -47,10 +47,11 @@ func (ch *Channel) Monitor() {
 				ch.stateMu.Lock()
 				ch.IsOnline = false
 				ch.IsConnecting = false
+				ch.LastError = err.Error()
 				roomStatus := ch.RoomStatus
 				ch.stateMu.Unlock()
 				ch.Update()
-				ch.Info("channel is %s, try again in %d min(s)", roomStatus, server.Config.Interval)
+				ch.Info("channel is %s, try again in %d min(s) — %s", roomStatus, server.Config.Interval, err.Error())
 
 			case errors.Is(err, internal.ErrStreamStalled):
 				ch.SetConnecting(true)
@@ -58,6 +59,9 @@ func (ch *Channel) Monitor() {
 
 			default:
 				ch.SetConnecting(true)
+				ch.stateMu.Lock()
+				ch.LastError = err.Error()
+				ch.stateMu.Unlock()
 				ch.Error("on retry: %s: retrying", err.Error())
 			}
 		}
