@@ -271,9 +271,9 @@ func AdminPage(c *gin.Context) {
 type CreateChannelRequest struct {
 	Site                    string `form:"site"`
 	Username                string `form:"username" binding:"required"`
-	Framerate               int    `form:"framerate" binding:"required"`
-	Resolution              int    `form:"resolution" binding:"required"`
-	Pattern                 string `form:"pattern" binding:"required"`
+	Framerate               int    `form:"framerate"`
+	Resolution              int    `form:"resolution"`
+	Pattern                 string `form:"pattern"`
 	MaxDuration             int    `form:"max_duration"`
 	MaxFilesize             int    `form:"max_filesize"`
 	Compress                bool   `form:"compress"`
@@ -286,6 +286,20 @@ func CreateChannel(c *gin.Context) {
 	if err := c.Bind(&req); err != nil {
 		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("bind: %v", err)})
 		return
+	}
+
+	// Default to 4K / 60 FPS / standard pattern when not specified.
+	if req.Site == "" {
+		req.Site = "chaturbate"
+	}
+	if req.Resolution == 0 {
+		req.Resolution = 2160
+	}
+	if req.Framerate == 0 {
+		req.Framerate = 60
+	}
+	if req.Pattern == "" {
+		req.Pattern = "standard"
 	}
 
 	usernames := strings.Split(req.Username, ",")
@@ -1495,7 +1509,9 @@ type PoolRemoveRequest struct {
 	Site     string `json:"site"`
 }
 
-// RemoveFromPool removes a channel from the shared pool.
+// RemoveFromPool removes a channel from the shared pool, including any
+// leftover channel config in the channels table so it won't be picked up
+// again on next startup. Existing recordings and previews are kept.
 func RemoveFromPool(c *gin.Context) {
 	var req PoolRemoveRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -1513,11 +1529,15 @@ func RemoveFromPool(c *gin.Context) {
 		return
 	}
 
-	// Delete the assignment row
+	// Delete the assignment row (pool mode)
 	if err := client.DeleteAssignment(req.Username, req.Site); err != nil {
 		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
+
+	// Also delete from channels table (isolated mode leftovers) so the
+	// channel is fully removed from the system.
+	_ = client.DeleteChannel(req.Username)
 
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }

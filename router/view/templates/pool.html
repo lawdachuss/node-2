@@ -128,6 +128,11 @@
             <a href="/admin">Admin</a>
             <a href="/nodes">Nodes</a>
             <a href="/videos">Videos</a>
+            <span style="font-size:11px;color:var(--text-muted);display:flex;align-items:center;gap:4px">
+                <input type="checkbox" id="auto-refresh" onchange="toggleAutoRefresh()"
+                       style="accent-color:var(--accent);margin:0;width:14px;height:14px">
+                <label for="auto-refresh" style="cursor:pointer">Auto</label>
+            </span>
             <a href="javascript:void(0)" onclick="location.reload()">Refresh</a>
             <a href="javascript:void(0)" onclick="toggleTheme()" id="theme-btn" style="font-size:14px">🌙</a>
         </div>
@@ -257,7 +262,30 @@ function removeFromPool(username, site) {
     if (btn) {
         btn.textContent = document.documentElement.classList.contains('dark') ? '☀️' : '🌙';
     }
+    var ar = document.getElementById('auto-refresh');
+    ar.checked = localStorage.getItem('pool-auto-refresh') !== 'false';
+    if (ar.checked) {
+        scheduleRefresh();
+    }
 })();
+
+function toggleAutoRefresh() {
+    var cb = document.getElementById('auto-refresh');
+    localStorage.setItem('pool-auto-refresh', cb.checked);
+    if (cb.checked) {
+        scheduleRefresh();
+    } else {
+        if (window._refreshTimer) { clearTimeout(window._refreshTimer); window._refreshTimer = null; }
+    }
+}
+
+function scheduleRefresh() {
+    if (window._refreshTimer) clearTimeout(window._refreshTimer);
+    window._refreshTimer = setTimeout(function() {
+        location.reload();
+    }, 15000);
+}
+
 function toggleTheme() {
     var html = document.documentElement;
     html.classList.toggle('dark');
