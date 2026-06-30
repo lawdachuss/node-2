@@ -489,15 +489,20 @@ jobs:
           Remove-Item Env:http_proxy -ErrorAction SilentlyContinue
           Remove-Item Env:https_proxy -ErrorAction SilentlyContinue
           $env:GOPROXY = "https://proxy.golang.org,direct"
-          $env:NO_PROXY = "proxy.golang.org,github.com,*.github.com,githubusercontent.com,go.opencensus.io,golang.org,*.golang.org,google.golang.org"
+          $env:GONOSUMDB = "*"
+          $env:GONOSUMCHECK = "*"
+          $env:GOFLAGS = "-mod=mod"
           Write-Host "Building cookie grabber..."
-          go build -o grab-cookies.exe ./cmd/grab_cookies 2>&1
+          Write-Host "  Go env: $(go env GOPROXY GONOSUMDB GONOSUMCHECK GOFLAGS)"
+          $buildOut = go build -o grab-cookies.exe ./cmd/grab_cookies 2>&1
+          $buildExit = $LASTEXITCODE
           # Restore proxy env vars after build
           if ($savedAllProxy) { $env:ALL_PROXY = $savedAllProxy; $env:all_proxy = $savedAllProxy }
           if ($savedHttpProxy) { $env:HTTP_PROXY = $savedHttpProxy }
           if ($savedHttpsProxy) { $env:HTTPS_PROXY = $savedHttpsProxy }
-          if ($LASTEXITCODE -ne 0) {
-            Write-Error "Failed to build cookie grabber"
+          if ($buildExit -ne 0) {
+            Write-Host "Build failed (exit $buildExit). Full output:"
+            $buildOut | ForEach-Object { Write-Host "  $_" }
             Write-Host "Falling back to old COOKIES from secret - rewriting .env"
             if (-not [string]::IsNullOrWhiteSpace($env:MINI_ENV)) {
               [System.IO.File]::WriteAllText($envPath, $env:MINI_ENV, (New-Object System.Text.UTF8Encoding($false)))
