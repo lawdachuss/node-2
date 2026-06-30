@@ -396,6 +396,11 @@ jobs:
           Copy-Item -Path "$env:GITHUB_WORKSPACE\*" -Destination $repoDir -Recurse -Force
           Write-Host "[OK] Copied local repo to $repoDir"
 
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.26'
+
       - name: Refresh Chaturbate Cookies via Go Grabber (through SOCKS5 proxy)
         shell: powershell
         env:
