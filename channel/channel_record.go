@@ -17,12 +17,10 @@ import (
 )
 
 // Monitor starts monitoring the channel for live streams and records them.
-func (ch *Channel) Monitor() {
+func (ch *Channel) Monitor(ctx context.Context) {
 	siteImpl := resolveSite(ch)
 	req := internal.NewReq()
 	ch.Info("starting to record `%s` (%s)", ch.Config.Username, ch.Config.Site)
-
-	ctx, _ := ch.WithCancel(context.Background())
 
 	ch.stateMu.Lock()
 	ch.RoomStatus = "offline"
@@ -31,6 +29,11 @@ func (ch *Channel) Monitor() {
 	var err error
 	for {
 		if err = ctx.Err(); err != nil {
+			break
+		}
+		if ch.Config.IsPaused.Load() {
+			ch.Info("channel was paused, exiting monitor")
+			err = context.Canceled
 			break
 		}
 

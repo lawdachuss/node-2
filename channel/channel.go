@@ -431,15 +431,23 @@ func (ch *Channel) Resume(_ int) {
 	ch.Update()
 	ch.Info("channel resumed")
 
+	// Create the cancellable context and store CancelFunc BEFORE starting
+	// the goroutine so Pause() always has a valid target to cancel.
+	ctx, cancel := context.WithCancel(context.Background())
+	ch.cancelMu.Lock()
+	ch.CancelFunc = cancel
+	ch.cancelMu.Unlock()
+
 	ch.monitorWg.Add(1)
 	go func() {
 		defer ch.monitorWg.Done()
 		select {
 		case <-ch.done:
+			cancel()
 			return
 		default:
 		}
-		ch.Monitor()
+		ch.Monitor(ctx)
 	}()
 }
 

@@ -1509,9 +1509,10 @@ type PoolRemoveRequest struct {
 	Site     string `json:"site"`
 }
 
-// RemoveFromPool removes a channel from the shared pool, including any
-// leftover channel config in the channels table so it won't be picked up
-// again on next startup. Existing recordings and previews are kept.
+// RemoveFromPool removes a channel from the shared pool. It deletes the
+// pool assignment, cleans up the isolated-mode channels table, and stops
+// the local DVR if the channel is running on this node. Existing recordings
+// and previews are kept.
 func RemoveFromPool(c *gin.Context) {
 	var req PoolRemoveRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -1521,6 +1522,12 @@ func RemoveFromPool(c *gin.Context) {
 
 	if req.Site == "" {
 		req.Site = "chaturbate"
+	}
+
+	// If the channel is running locally, stop it (releases coordinator,
+	// stops ffmpeg, removes from memory, saves config). No-op otherwise.
+	if err := server.Manager.StopChannel(req.Username); err != nil {
+		fmt.Printf("[ERROR] remove from pool: stop channel %s: %v\n", req.Username, err)
 	}
 
 	client := server.GetDBClient()
