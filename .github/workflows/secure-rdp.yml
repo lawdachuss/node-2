@@ -194,19 +194,36 @@ jobs:
           $maxProxies = [math]::Min(5, $allWorking.Count)
           foreach ($w in $allWorking) {
             if ($workingProxies.Count -ge $maxProxies) { break }
+            $country = ""; $org = ""
             try {
-              $locRaw = curl.exe -x $w.url -s --connect-timeout 2 -m 3 https://ipinfo.io/json 2>$null
-              if ($locRaw) {
-                $loc = $locRaw | ConvertFrom-Json -ErrorAction Stop
-                $country = $loc.country
-                if ($country -eq "NL" -or $country -eq "IN") {
-                  $workingProxies += @{ url = $w.url; ip = $w.ip; country = $country; org = $loc.org }
-                  log "WORKING #$($workingProxies.Count): $($w.url) (IP: $($w.ip) / $country - $($loc.org))"
+              # Try ipinfo.io through the proxy
+              $locRaw = curl.exe -x $w.url -s --connect-timeout 3 -m 5 https://ipinfo.io/json 2>$null
+              if (-not $locRaw) {
+                # Fallback: query ipinfo.io with known IP directly (no proxy)
+                Start-Sleep -Milliseconds 200
+                $locRaw = curl.exe -s --connect-timeout 3 -m 5 "https://ipinfo.io/$($w.ip)/json" 2>$null
+              }
+              if (-not $locRaw) {
+                # Second fallback: ip-api.com (free, no API key)
+                Start-Sleep -Milliseconds 200
+                $locRaw = curl.exe -s --connect-timeout 3 -m 5 "http://ip-api.com/json/$($w.ip)" 2>$null
+                if ($locRaw) {
+                  $loc2 = $locRaw | ConvertFrom-Json -ErrorAction SilentlyContinue
+                  if ($loc2 -and $loc2.status -eq "success") {
+                    $country = $loc2.countryCode; $org = $loc2.org
+                  }
                 }
+              } elseif ($locRaw) {
+                $loc = $locRaw | ConvertFrom-Json -ErrorAction SilentlyContinue
+                if ($loc) { $country = $loc.country; $org = $loc.org }
               }
             } catch {}
-            if ($fallbackProxies.Count -eq 0) {
-              $fallbackProxies += @{ url = $w.url; ip = $w.ip }
+            if ($country -eq "NL" -or $country -eq "IN") {
+              $workingProxies += @{ url = $w.url; ip = $w.ip; country = $country; org = $org }
+              log "WORKING #$($workingProxies.Count): $($w.url) (IP: $($w.ip) / $country - $($org))"
+            }
+            if ($fallbackProxies.Count -eq 0 -and $workingProxies.Count -eq 0) {
+              $fallbackProxies += @{ url = $w.url; ip = $w.ip; country = $country; org = $org }
             }
           }
 
