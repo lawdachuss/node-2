@@ -99,10 +99,9 @@ jobs:
 
           function Test-Proxy($proxyUrl) {
             try {
-              $ip = curl.exe -x $proxyUrl -s -m 5 https://api.ipify.org 2>$null
+              $ip = curl.exe -x $proxyUrl -s --connect-timeout 2 -m 3 https://api.ipify.org 2>$null
               if ($ip -notmatch '^\d+\.\d+\.\d+\.\d+$') { return $null }
-              # Also verify proxy can reach Chaturbate — ipify alone is not enough
-              $cb = curl.exe -x $proxyUrl -s -o NUL -w "%{http_code}" -m 10 https://chaturbate.com 2>$null
+              $cb = curl.exe -x $proxyUrl -s -o NUL -w "%{http_code}" --connect-timeout 2 -m 3 https://chaturbate.com 2>$null
               if ($cb -ne "200") { return $null }
               return $ip.Trim()
             } catch {}
@@ -135,6 +134,9 @@ jobs:
           $allProxies = $allProxies | Select-Object -Unique
           log "Total unique proxies to test: $($allProxies.Count)"
 
+          # Shuffle to avoid testing dead proxies first
+          $allProxies = $allProxies | Sort-Object { Get-Random }
+
           if ($allProxies.Count -eq 0) {
             log "WARNING: No proxies fetched from APIs. Using emergency fallback list."
             $allProxies = @(
@@ -147,7 +149,7 @@ jobs:
             )
           }
 
-          $maxProxies = 5
+          $maxProxies = 1
           $workingProxies = @()
           $fallbackProxies = @()
           $tested = 0
@@ -155,7 +157,9 @@ jobs:
 
           log ""
           log "=== Testing proxies (collecting $maxProxies working NL/IN proxies) ==="
+          $proxyTestDeadline = [datetime]::UtcNow.AddSeconds(90)
           foreach ($p in $allProxies) {
+            if ([datetime]::UtcNow -gt $proxyTestDeadline) { log "TIMEOUT: proxy search exceeded 90s limit"; break }
             if ($workingProxies.Count -ge $maxProxies) { break }
             $tested++
             if ($tested -ge $lastLogAt + 100) {
