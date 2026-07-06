@@ -472,8 +472,8 @@ jobs:
       - name: Install Scrapling (Python Cloudflare bypass)
         shell: powershell
         run: |
-          pip install scrapling[fetchers] 2>&1
-          scrapling install 2>&1
+          pip install "scrapling[fetchers]" 2>&1 | Out-String
+          python -m scrapling install 2>&1 | Out-String
           Write-Host "[OK] Scrapling installed"
 
       - name: Refresh Chaturbate Cookies via Go Grabber (through SOCKS5 proxy)
