@@ -71,17 +71,14 @@ func main() {
 		return
 	}
 
-	// Track best attempt — if we get any cookies (even without fresh cf_clearance),
-	// save them so __cf_bm gets refreshed.
-	var bestCookies atomic.Value // stores map[string]string
-	var bestMu sync.Mutex
-
-	// Phase 1: httpcloak without old cookies — test all proxies in parallel
-	fmt.Println("[1/2] httpcloak (no cookies)...")
-	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	// Test all proxies in parallel. Stop on first success — we just need
+	// fresh __cf_bm; old cf_clearance is preserved from .env.
+	fmt.Println("[1/1] Fetching cookies (parallel, stop on first success)...")
+	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	var wg sync.WaitGroup
 	done := atomic.Bool{}
+	var wg sync.WaitGroup
+	var result atomic.Value // stores map[string]string
 	for pi, p := range workingURLs {
 		wg.Add(1)
 		go func(idx int, proxyURL string) {
@@ -90,77 +87,25 @@ func main() {
 				return
 			}
 			fmt.Printf("  Proxy [%d/%d]: %s\n", idx+1, len(workingURLs), proxyURL)
-			cookies := tryHTTPCloak(ctx, proxyURL, userAgent, "")
-			if cookies == nil {
+			cookies := tryHTTPCloak(ctx, proxyURL, userAgent, oldCookieStr)
+			if cookies == nil || done.Load() {
 				return
 			}
-			bestMu.Lock()
-			if bestCookies.Load() == nil {
-				bestCookies.Store(cookies)
+			if result.Load() == nil {
+				result.Store(cookies)
 			}
-			if v, ok := cookies["cf_clearance"]; ok && v != "" {
-				fmt.Println("  Fresh cf_clearance obtained!")
-				bestMu.Unlock()
-				done.Store(true)
-				saveAndExit(cookies, oldCookieStr, userAgent)
-				return
-			}
-			bestMu.Unlock()
+			fmt.Println("  Got cookies — saving and exiting")
+			done.Store(true)
+			cancel()
+			saveAndExit(cookies, oldCookieStr, userAgent)
 		}(pi, p)
 	}
 	wg.Wait()
-	if done.Load() {
-		return
-	}
 
-	// Phase 2: httpcloak with old cookies (better chance of getting cf_clearance)
-	bc, _ := bestCookies.Load().(map[string]string)
-	if bc == nil || bc["cf_clearance"] == "" {
-		fmt.Println("[2/2] httpcloak (with existing cookies)...")
-		ctx2, cancel2 := context.WithTimeout(context.Background(), 90*time.Second)
-		defer cancel2()
-		done.Store(false)
-		for pi, p := range workingURLs {
-			wg.Add(1)
-			go func(idx int, proxyURL string) {
-				defer wg.Done()
-				if done.Load() {
-					return
-				}
-				fmt.Printf("  Proxy [%d/%d]: %s\n", idx+1, len(workingURLs), proxyURL)
-				cookies := tryHTTPCloak(ctx2, proxyURL, userAgent, oldCookieStr)
-				if cookies == nil {
-					return
-				}
-				bestMu.Lock()
-				if bestCookies.Load() == nil {
-					bestCookies.Store(cookies)
-				}
-				if v, ok := cookies["cf_clearance"]; ok && v != "" {
-					fmt.Println("  Fresh cf_clearance obtained!")
-					bestMu.Unlock()
-					done.Store(true)
-					saveAndExit(cookies, oldCookieStr, userAgent)
-					return
-				}
-				bestMu.Unlock()
-			}(pi, p)
-		}
-		wg.Wait()
-		if done.Load() {
-			return
-		}
+	if result.Load() == nil {
+		fmt.Println("\n[FAIL] Could not obtain cookies from any method")
+		exitCode = 1
 	}
-
-	bc, _ = bestCookies.Load().(map[string]string)
-	if bc != nil {
-		fmt.Println("\nNo fresh cf_clearance from Cloudflare (old one still valid), but refreshing __cf_bm and other session cookies")
-		saveAndExit(bc, oldCookieStr, userAgent)
-		return
-	}
-
-	fmt.Println("\n[FAIL] Could not obtain cookies from any method")
-	exitCode = 1
 }
 
 func saveAndExit(cookies map[string]string, oldCookieStr, userAgent string) {
@@ -194,7 +139,7 @@ func saveAndExit(cookies map[string]string, oldCookieStr, userAgent string) {
 
 func tryHTTPCloak(ctx context.Context, proxyURL, userAgent, cookieStr string) map[string]string {
 	opts := []httpcloak.Option{
-		httpcloak.WithTimeout(30 * time.Second),
+		httpcloak.WithTimeout(15 * time.Second),
 	}
 	if proxyURL != "" {
 		opts = append(opts, httpcloak.WithProxy(proxyURL))
@@ -207,7 +152,6 @@ func tryHTTPCloak(ctx context.Context, proxyURL, userAgent, cookieStr string) ma
 		defer c.Close()
 	}
 
-	// Visit chaturbate.com
 	headers := map[string][]string{
 		"User-Agent": {userAgent},
 		"Accept":     {"text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"},
@@ -220,13 +164,9 @@ func tryHTTPCloak(ctx context.Context, proxyURL, userAgent, cookieStr string) ma
 		Method:  "GET",
 		URL:     "https://chaturbate.com",
 		Headers: headers,
-		Timeout: 30 * time.Second,
+		Timeout: 15 * time.Second,
 	})
 	if err != nil {
-		if ctx.Err() != nil {
-			return nil
-		}
-		fmt.Printf("  httpcloak error: %v\n", err)
 		return nil
 	}
 	fmt.Printf("  Status: %d\n", resp.StatusCode)
@@ -244,46 +184,7 @@ func tryHTTPCloak(ctx context.Context, proxyURL, userAgent, cookieStr string) ma
 			fmt.Printf("    %s = ...%s (ts: %s)\n", k, truncate(v, 20), extractTimestamp(v))
 		}
 	}
-
-	// If no cf_clearance, try a second URL to trigger challenge
-	if _, has := cookies["cf_clearance"]; !has || cookies["cf_clearance"] == "" {
-		fmt.Println("  No cf_clearance — visiting auth page to trigger challenge...")
-		c2 := visitURL(ctx, client, userAgent, cookieStr, "https://chaturbate.com/auth/login/?next=/")
-		if c2 != nil {
-			for k, v := range c2 {
-				if k == "cf_clearance" && v != "" {
-					cookies[k] = v
-					fmt.Println("  Got cf_clearance from auth page!")
-				}
-			}
-		}
-	}
-
 	return cookies
-}
-
-func visitURL(ctx context.Context, client *httpcloak.Client, userAgent, cookieStr, targetURL string) map[string]string {
-	headers := map[string][]string{
-		"User-Agent": {userAgent},
-		"Accept":     {"text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"},
-	}
-	if cookieStr != "" {
-		headers["Cookie"] = []string{cookieStr}
-	}
-	resp, err := client.Do(ctx, &httpcloak.Request{
-		Method:  "GET",
-		URL:     targetURL,
-		Headers: headers,
-		Timeout: 30 * time.Second,
-	})
-	if err != nil {
-		fmt.Printf("  secondary request error: %v\n", err)
-		return nil
-	}
-	defer resp.Body.Close()
-	_, _ = io.Copy(io.Discard, resp.Body)
-	fmt.Printf("  Status: %d\n", resp.StatusCode)
-	return extractCookies(resp.Headers)
 }
 
 func extractCookies(headers map[string][]string) map[string]string {
