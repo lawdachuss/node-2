@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/sardanioss/httpcloak"
+	"github.com/teacat/chaturbate-dvr/internal/proxy"
 )
 
 func main() {
@@ -22,14 +23,6 @@ func main() {
 
 	loadDotEnv(".env")
 
-	proxyURL := os.Getenv("PROXY_URL")
-	if proxyURL == "" {
-		proxyURL = os.Getenv("ALL_PROXY")
-	}
-	if idx := strings.Index(proxyURL, ","); idx > 0 {
-		proxyURL = strings.TrimSpace(proxyURL[:idx])
-	}
-
 	userAgent := os.Getenv("USER_AGENT")
 	if userAgent == "" {
 		userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36"
@@ -37,72 +30,105 @@ func main() {
 	oldCookieStr := os.Getenv("COOKIES")
 
 	fmt.Println("=== Cookie Grabber ===")
-	fmt.Printf("Proxy: %s\n", proxyURL)
 	fmt.Printf("User-Agent: %s\n", userAgent)
 	fmt.Printf("Existing cookies: %d chars\n", len(oldCookieStr))
 	fmt.Println()
 
-	// Verify proxy first
-	if proxyURL != "" {
-		fmt.Println("Verifying proxy...")
-		egress := checkProxyEgress(proxyURL)
-		if egress != "" {
-			fmt.Printf("  Proxy OK — egress IP: %s\n", egress)
-		} else {
-			fmt.Println("  [WARN] Proxy test failed — proxy may be down")
+	// Dynamically fetch and test proxies using httpcloak
+	fmt.Println("Fetching SOCKS5 proxies from public lists...")
+	ctx := context.Background()
+	proxies, err := proxy.FetchProxies(ctx, 5)
+	if err != nil || len(proxies) == 0 {
+		fmt.Printf("  [WARN] No dynamic proxies found: %v\n", err)
+		fmt.Println("  Falling back to env PROXY_URL if set...")
+		// Fallback: try env-based proxies
+		envProxies := getProxyURLs()
+		for _, p := range envProxies {
+			proxies = append(proxies, proxy.ProxyResult{URL: p, OK: true})
 		}
-		fmt.Println()
+	}
+	fmt.Printf("Using %d proxies\n", len(proxies))
+	for i, p := range proxies {
+		fmt.Printf("  [%d] %s [%s]\n", i+1, p.URL, p.Country)
+	}
+	fmt.Println()
+
+	// Build working proxy URL list
+	var workingURLs []string
+	for _, p := range proxies {
+		if p.OK {
+			workingURLs = append(workingURLs, p.URL)
+		}
+	}
+	if len(workingURLs) == 0 {
+		fmt.Println("  [WARN] No working proxies, will try each anyway")
+		for _, p := range proxies {
+			workingURLs = append(workingURLs, p.URL)
+		}
 	}
 
 	// Track best attempt — if we get any cookies (even without fresh cf_clearance),
 	// save them so __cf_bm gets refreshed.
 	var bestCookies map[string]string
 
-	// Phase 1: httpcloak without old cookies
+	// Phase 1: httpcloak without old cookies — try each proxy
 	fmt.Println("[1/3] httpcloak (no cookies)...")
-	for attempt := 0; attempt < 3; attempt++ {
-		cookies := tryHTTPCloak(proxyURL, userAgent, "")
-		if cookies != nil {
-			if v, ok := cookies["cf_clearance"]; ok && v != "" {
-				fmt.Println("  Fresh cf_clearance obtained!")
-				saveAndExit(cookies, oldCookieStr, userAgent)
-				return
+	for pi, p := range workingURLs {
+		fmt.Printf("  Proxy [%d/%d]: %s\n", pi+1, len(workingURLs), p)
+		for attempt := 0; attempt < 3; attempt++ {
+			cookies := tryHTTPCloak(p, userAgent, "")
+			if cookies != nil {
+				if v, ok := cookies["cf_clearance"]; ok && v != "" {
+					fmt.Println("  Fresh cf_clearance obtained!")
+					saveAndExit(cookies, oldCookieStr, userAgent)
+					return
+				}
+				if bestCookies == nil {
+					bestCookies = cookies
+				}
+				break
 			}
-			if bestCookies == nil {
-				bestCookies = cookies
+			if attempt < 2 {
+				fmt.Printf("    Retrying (%d/3)...\n", attempt+2)
+				time.Sleep(3 * time.Second)
 			}
-		}
-		if attempt < 2 {
-			fmt.Printf("  Retrying (%d/3)...\n", attempt+2)
-			time.Sleep(3 * time.Second)
 		}
 	}
 
 	// Phase 2: httpcloak with old cookies (better chance of getting cf_clearance)
-	fmt.Println("[2/3] httpcloak (with existing cookies)...")
-	for attempt := 0; attempt < 3; attempt++ {
-		cookies := tryHTTPCloak(proxyURL, userAgent, oldCookieStr)
-		if cookies != nil {
-			if v, ok := cookies["cf_clearance"]; ok && v != "" {
-				fmt.Println("  Fresh cf_clearance obtained!")
-				saveAndExit(cookies, oldCookieStr, userAgent)
-				return
+	if bestCookies == nil || bestCookies["cf_clearance"] == "" {
+		fmt.Println("[2/3] httpcloak (with existing cookies)...")
+		for pi, p := range workingURLs {
+			fmt.Printf("  Proxy [%d/%d]: %s\n", pi+1, len(workingURLs), p)
+			for attempt := 0; attempt < 3; attempt++ {
+				cookies := tryHTTPCloak(p, userAgent, oldCookieStr)
+				if cookies != nil {
+					if v, ok := cookies["cf_clearance"]; ok && v != "" {
+						fmt.Println("  Fresh cf_clearance obtained!")
+						saveAndExit(cookies, oldCookieStr, userAgent)
+						return
+					}
+					if bestCookies == nil {
+						bestCookies = cookies
+					}
+					break
+				}
+				if attempt < 2 {
+					fmt.Printf("    Retrying (%d/3)...\n", attempt+2)
+					time.Sleep(3 * time.Second)
+				}
 			}
-			if bestCookies == nil {
-				bestCookies = cookies
-			}
-		}
-		if attempt < 2 {
-			fmt.Printf("  Retrying (%d/3)...\n", attempt+2)
-			time.Sleep(3 * time.Second)
 		}
 	}
 
 	// Phase 3: Go default client (HTTP proxy only)
 	fmt.Println("[3/3] Go default HTTP client...")
-	cookies := tryDefaultClient(proxyURL, userAgent, oldCookieStr)
-	if cookies != nil {
-		bestCookies = cookies
+	for _, p := range workingURLs {
+		cookies := tryDefaultClient(p, userAgent, oldCookieStr)
+		if cookies != nil {
+			bestCookies = cookies
+			break
+		}
 	}
 
 	if bestCookies != nil {
@@ -330,30 +356,24 @@ func tryDefaultClient(proxyURL, userAgent, cookieStr string) map[string]string {
 	return nil
 }
 
-// checkProxyEgress tests the proxy by connecting to api.ipify.org and
-// returning our egress IP. Returns empty string if proxy fails.
-func checkProxyEgress(proxyURL string) string {
-	opts := []httpcloak.Option{
-		httpcloak.WithTimeout(15 * time.Second),
-		httpcloak.WithProxy(proxyURL),
+// getProxyURLs returns all proxy URLs from the environment.
+// Supports PROXY_URL (comma-separated for failover), falling back to ALL_PROXY.
+func getProxyURLs() []string {
+	raw := os.Getenv("PROXY_URL")
+	if raw == "" {
+		raw = os.Getenv("ALL_PROXY")
 	}
-	client := httpcloak.New("chrome-146-windows", opts...)
-	if c, ok := interface{}(client).(interface{ Close() error }); ok {
-		defer c.Close()
+	if raw == "" {
+		return nil
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-	defer cancel()
-	resp, err := client.Do(ctx, &httpcloak.Request{
-		Method: "GET",
-		URL:    "https://api.ipify.org",
-		Timeout: 15 * time.Second,
-	})
-	if err != nil {
-		return ""
+	var urls []string
+	for _, part := range strings.Split(raw, ",") {
+		part = strings.TrimSpace(part)
+		if part != "" {
+			urls = append(urls, part)
+		}
 	}
-	defer resp.Body.Close()
-	body, _ := io.ReadAll(resp.Body)
-	return strings.TrimSpace(string(body))
+	return urls
 }
 
 // ─── helpers ───────────────────────────────────────────────

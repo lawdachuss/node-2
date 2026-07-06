@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/sardanioss/httpcloak"
+	"github.com/teacat/chaturbate-dvr/internal/proxy"
 	"github.com/teacat/chaturbate-dvr/server"
 )
 
@@ -38,6 +39,20 @@ var sharedTransportOnce sync.Once
 func getSharedTransport() http.RoundTripper {
 	sharedTransportOnce.Do(func() {
 		proxyURLs := configuredProxyURLs()
+		if len(proxyURLs) == 0 {
+			fmt.Println("[proxy] no env-configured proxies — attempting dynamic discovery...")
+			ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+			defer cancel()
+			results, err := proxy.FetchProxies(ctx, 5)
+			if err == nil {
+				for _, r := range results {
+					if r.OK {
+						proxyURLs = append(proxyURLs, r.URL)
+					}
+				}
+			}
+			fmt.Printf("[proxy] dynamically discovered %d proxies\n", len(proxyURLs))
+		}
 		client := newCloakClient(proxyURLAt(proxyURLs, 0))
 		sharedTransportSingleton = &httpcloakTransport{
 			client:    client,
@@ -132,12 +147,32 @@ func (t *httpcloakTransport) rotateProxy() bool {
 // resets the client to use the first (presumably freshest) proxy.
 // Returns true if new proxies were loaded, false if the list is empty.
 // This is called when all proxies in the current list have failed,
-// allowing the DVR to pick up environment variable updates without a restart.
+// allowing the DVR to pick up environment variable updates without a restart
+// or dynamically discover new proxies.
 func (t *httpcloakTransport) refreshProxies() bool {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
 	newProxies := configuredProxyURLs()
+
+	// If env has no proxies, try dynamic discovery
+	if len(newProxies) == 0 {
+		fmt.Println("[proxy] no env-configured proxies — attempting dynamic discovery...")
+		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		defer cancel()
+		results, err := proxy.FetchProxies(ctx, 5)
+		if err != nil || len(results) == 0 {
+			fmt.Printf("[proxy] dynamic discovery failed: %v\n", err)
+			return false
+		}
+		for _, r := range results {
+			if r.OK {
+				newProxies = append(newProxies, r.URL)
+			}
+		}
+		fmt.Printf("[proxy] dynamically discovered %d proxies\n", len(newProxies))
+	}
+
 	if len(newProxies) == 0 {
 		return false
 	}

@@ -251,35 +251,39 @@ jobs:
           }
 
           log ""
-          log "=== Collected $($workingProxies.Count) working proxies ==="
-          $primary = $workingProxies[0].url
-          $proxyUrlList = ($workingProxies | ForEach-Object { $_.url }) -join ","
+          if ($workingProxies.Count -gt 0) {
+            log "=== Collected $($workingProxies.Count) working proxies ==="
+            $primary = $workingProxies[0].url
+            $proxyUrlList = ($workingProxies | ForEach-Object { $_.url }) -join ","
 
-          echo "PROXY_URL=$proxyUrlList" >> $env:GITHUB_ENV
-          echo "ALL_PROXY=$primary"     >> $env:GITHUB_ENV
-          echo "all_proxy=$primary"     >> $env:GITHUB_ENV
-          echo "SOCKS_PROXY=$primary"   >> $env:GITHUB_ENV
+            echo "PROXY_URL=$proxyUrlList" >> $env:GITHUB_ENV
+            echo "ALL_PROXY=$primary"     >> $env:GITHUB_ENV
+            echo "all_proxy=$primary"     >> $env:GITHUB_ENV
+            echo "SOCKS_PROXY=$primary"   >> $env:GITHUB_ENV
 
-          & git config --global http.proxy  $primary
-          & git config --global https.proxy $primary
+            & git config --global http.proxy  $primary
+            & git config --global https.proxy $primary
 
-          log "[OK] Git configured to use $primary"
-          log "[OK] PROXY_URL set with $($workingProxies.Count) proxies for rotation"
-          foreach ($wp in $workingProxies) {
-            log "  [$($wp.country)] $($wp.url) (IP: $($wp.ip) - $($wp.org))"
+            log "[OK] Git configured to use $primary"
+            log "[OK] PROXY_URL set with $($workingProxies.Count) proxies for rotation"
+            foreach ($wp in $workingProxies) {
+              log "  [$($wp.country)] $($wp.url) (IP: $($wp.ip) - $($wp.org))"
+            }
+
+            log ""
+            log "Verifying primary proxy egress..."
+            try {
+              $ip  = curl.exe -x $primary -s -m 10 https://api.ipify.org 2>$null
+              $LASTEXITCODE = 0
+              $loc = curl.exe -x $primary -s -m 10 https://ipinfo.io/json 2>$null | ConvertFrom-Json
+              $LASTEXITCODE = 0
+              log "Public IP: $ip / $($loc.country) - $($loc.org)"
+            } catch { log "Verification failed: $_" }
+            $LASTEXITCODE = 0
+            log "[OK] SOCKS5 proxy configured."
+          } else {
+            log "=== No proxies configured - DVR will connect directly ==="
           }
-
-          log ""
-          log "Verifying primary proxy egress..."
-          try {
-            $ip  = curl.exe -x $primary -s -m 10 https://api.ipify.org 2>$null
-            $LASTEXITCODE = 0
-            $loc = curl.exe -x $primary -s -m 10 https://ipinfo.io/json 2>$null | ConvertFrom-Json
-            $LASTEXITCODE = 0
-            log "Public IP: $ip / $($loc.country) - $($loc.org)"
-          } catch { log "Verification failed: $_" }
-          $LASTEXITCODE = 0
-          log "[OK] SOCKS5 proxy configured."
 
       - name: Configure Windows RDP
         shell: powershell
@@ -548,8 +552,11 @@ jobs:
             Write-Warning "Cookie grabber exited with code $grabExit - falling back to old COOKIES from secret"
             if (-not [string]::IsNullOrWhiteSpace($env:MINI_ENV)) {
               [System.IO.File]::WriteAllText($envPath, $env:MINI_ENV, (New-Object System.Text.UTF8Encoding($false)))
+              Write-Host "[OK] Restored old COOKIES from secret - DVR will continue with existing cookies"
+            } else {
+              Write-Error "No MINI_ENV secret set - cannot recover cookies"
+              exit 1
             }
-            exit 1
           }
 
           # Verify cookies were written
@@ -656,22 +663,30 @@ jobs:
           Write-Host "DVR proxy: $proxyUrl"
           
           # Add output redirection to wrapper script for debugging
+          $proxyLabel = if ($proxyUrl) { "Netherlands proxy" } else { "direct connection" }
           $wrapperLines = @(
             "# DVR Wrapper Script - Sets proxy environment variables before starting DVR",
             "`$logFile = `"$repoDir\dvr-wrapper.log`"",
             "Start-Transcript -Path `$logFile -Append",
             "",
-            "`$env:ALL_PROXY = `"$proxyUrl`"",
-            "`$env:all_proxy = `"$proxyUrl`"",
-            "# NOTE: Do NOT set HTTP_PROXY/HTTPS_PROXY to a SOCKS5 URL!",
-            "# Go's http.DefaultTransport uses these for outgoing requests",
-            "# and expects an HTTP proxy, not SOCKS5. The DVR uses PROXY_URL",
-            "# (via httpcloak) which handles SOCKS5 natively.",
-            "`$env:SOCKS_PROXY = `"$proxyUrl`"",
-            "# PROXY_URL is already set at workflow level with comma-separated list",
-            "# for automatic rotation. Only set if not already present.",
-            "if (-not `$env:PROXY_URL) { `$env:PROXY_URL = `"$proxyUrl`" }",
-            "if (-not `$env:PROXY_SERVER) { `$env:PROXY_SERVER = `"$proxyUrl`" }",
+            if ($proxyUrl) {
+              "`$env:ALL_PROXY = `"$proxyUrl`"",
+              "`$env:all_proxy = `"$proxyUrl`"",
+              "# NOTE: Do NOT set HTTP_PROXY/HTTPS_PROXY to a SOCKS5 URL!",
+              "# Go's http.DefaultTransport uses these for outgoing requests",
+              "# and expects an HTTP proxy, not SOCKS5. The DVR uses PROXY_URL",
+              "# (via httpcloak) which handles SOCKS5 natively.",
+              "`$env:SOCKS_PROXY = `"$proxyUrl`"",
+              "# PROXY_URL is already set at workflow level with comma-separated list",
+              "# for automatic rotation. Only set if not already present.",
+              "if (-not `$env:PROXY_URL) { `$env:PROXY_URL = `"$proxyUrl`" }",
+              "if (-not `$env:PROXY_SERVER) { `$env:PROXY_SERVER = `"$proxyUrl`" }",
+            } else {
+              "# No proxy configured - DVR will connect directly",
+              "Remove-Item Env:PROXY_URL -ErrorAction SilentlyContinue",
+              "Remove-Item Env:ALL_PROXY -ErrorAction SilentlyContinue",
+              "Remove-Item Env:SOCKS_PROXY -ErrorAction SilentlyContinue",
+            },
             "# Pooled mode env vars (distributed shards)",
             "`$env:CHANNEL_POOL_MODE = `"${{ secrets.CHANNEL_POOL_MODE }}`"",
             "`$env:NODE_ID = `"${{ secrets.NODE_ID }}`"",
@@ -687,8 +702,8 @@ jobs:
             "Remove-Item Env:http_proxy -ErrorAction SilentlyContinue",
             "Remove-Item Env:https_proxy -ErrorAction SilentlyContinue",
             "",
-            "Write-Host `"[DVR Wrapper] Starting chaturbate-dvr.exe with Netherlands proxy`"",
-            "Write-Host `"[DVR Wrapper] Proxy: $proxyUrl`"",
+            "Write-Host `"[DVR Wrapper] Starting chaturbate-dvr.exe with $proxyLabel`"",
+            "Write-Host `"[DVR Wrapper] Proxy: $(if (`$env:PROXY_URL) { `$env:PROXY_URL } else { 'direct' })`"",
             "Write-Host `"[DVR Wrapper] Working Directory: $repoDir`"",
             "Write-Host `"[DVR Wrapper] Videos Directory: $videosDir`"",
             "Write-Host `"[DVR Wrapper] Time: `$(Get-Date)`"",
@@ -1006,7 +1021,11 @@ jobs:
           
           Write-Host "[OK] PROXY_URL=$env:PROXY_URL"
           Write-Host "[OK] ALL_PROXY=$env:ALL_PROXY"
-          Write-Host "[OK] $($env:PROXY_URL.Split(',').Count) proxies available for rotation"
+          if ([string]::IsNullOrWhiteSpace($env:PROXY_URL)) {
+            Write-Host "[OK] 0 proxies - DVR will connect directly"
+          } else {
+            Write-Host "[OK] $($env:PROXY_URL.Split(',').Count) proxies available for rotation"
+          }
 
           $backupHTTP = $env:HTTP_PROXY
           $backupHTTPS = $env:HTTPS_PROXY
