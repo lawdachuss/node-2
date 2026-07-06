@@ -24,19 +24,14 @@ func main() {
 	fmt.Println("=== Cookie Grabber (Scrapling) ===")
 	fmt.Println()
 
-	// Get proxy — use PROXY_URL from env first
-	proxyURL := ""
 	envProxies := getProxyURLs()
-	if len(envProxies) > 0 {
-		proxyURL = envProxies[0]
-		fmt.Printf("Proxy: %s\n", proxyURL)
-	} else {
+	if len(envProxies) == 0 {
 		fmt.Println("No PROXY_URL set")
 		exitCode = 1
 		return
 	}
 
-	// Write Python script to temp file
+	// Write Python script to temp file once
 	tmpFile, err := os.CreateTemp("", "grab_cookies_*.py")
 	if err != nil {
 		fmt.Printf("[FAIL] Cannot create temp script: %v\n", err)
@@ -48,14 +43,38 @@ func main() {
 	tmpFile.Close()
 	defer os.Remove(tmpPath)
 
-	// Run Scrapling
-	fmt.Println("Running Scrapling browser (solving Cloudflare challenge)...")
+	// Try each proxy until one works
+	for i, proxyURL := range envProxies {
+		fmt.Printf("Proxy %d/%d: %s\n", i+1, len(envProxies), proxyURL)
+
+		cookies, ok := runScrapling(tmpPath, proxyURL)
+		if !ok {
+			fmt.Println()
+			continue
+		}
+
+		// Must have cf_clearance
+		if v, found := cookies["cf_clearance"]; !found || v == "" {
+			fmt.Println("[SKIP] No cf_clearance from this proxy\n")
+			continue
+		}
+
+		saveAndExit(cookies, userAgent)
+		return
+	}
+
+	fmt.Println("[FAIL] All proxies failed — preserving old cookies from secret")
+	exitCode = 1
+}
+
+func runScrapling(tmpPath, proxyURL string) (map[string]string, bool) {
+	fmt.Println("  Running Scrapling browser (solving Cloudflare challenge)...")
 	cmd := exec.Command("python", tmpPath, proxyURL)
 	stdout := &strings.Builder{}
 	stderr := &strings.Builder{}
 	cmd.Stdout = stdout
 	cmd.Stderr = stderr
-	err = cmd.Run()
+	cmd.Run()
 	if stderr.Len() > 0 {
 		for _, line := range strings.Split(strings.TrimSpace(stderr.String()), "\n") {
 			line = strings.TrimSpace(line)
@@ -66,14 +85,13 @@ func main() {
 	}
 	outStr := stdout.String()
 
-	// Find JSON in output (Scrapling may print log lines before the JSON)
+	// Find JSON in output
 	jsonStart := strings.Index(outStr, "{")
 	if jsonStart >= 0 {
 		outStr = outStr[jsonStart:]
 	} else {
 		jsonStart = strings.Index(outStr, "[")
 		if jsonStart >= 0 {
-			// Might be an error array
 			outStr = outStr[jsonStart:]
 		}
 	}
@@ -84,34 +102,21 @@ func main() {
 		Status  int               `json:"status"`
 	}
 	if json.Unmarshal([]byte(outStr), &result) != nil || !result.Success {
-		fmt.Printf("[FAIL] Scrapling failed\n  Raw: %s\n", strings.TrimSpace(outStr))
-		exitCode = 1
-		return
+		fmt.Printf("  [FAIL] Scrapling error\n  Raw: %s\n", strings.TrimSpace(outStr))
+		return nil, false
 	}
 
-	if !result.Success || len(result.Cookies) == 0 {
-		fmt.Println("[FAIL] Scrapling returned no cookies")
-		exitCode = 1
-		return
+	if len(result.Cookies) == 0 {
+		fmt.Println("  [FAIL] No cookies returned")
+		return nil, false
 	}
 
-	fmt.Printf("Status: %d\n", result.Status)
-	fmt.Printf("Got %d cookies\n", len(result.Cookies))
+	fmt.Printf("  Status: %d | Cookies: %d", result.Status, len(result.Cookies))
 	if v, ok := result.Cookies["cf_clearance"]; ok {
-		fmt.Printf("cf_clearance: fresh! (length: %d)\n", len(v))
+		fmt.Printf(" | cf_clearance: len=%d", len(v))
 	}
-	if v, ok := result.Cookies["__cf_bm"]; ok {
-		fmt.Printf("__cf_bm: fresh! (length: %d)\n", len(v))
-	}
-
-	// Must have cf_clearance — exit 1 if missing so workflow restores old secret
-	if v, ok := result.Cookies["cf_clearance"]; !ok || v == "" {
-		fmt.Println("[FAIL] No cf_clearance — preserving old cookies from secret")
-		exitCode = 1
-		return
-	}
-
-	saveAndExit(result.Cookies, userAgent)
+	fmt.Println()
+	return result.Cookies, true
 }
 
 func saveAndExit(cookies map[string]string, userAgent string) {
