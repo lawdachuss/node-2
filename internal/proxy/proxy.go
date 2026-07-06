@@ -56,7 +56,12 @@ func FetchProxies(ctx context.Context, limit int) ([]ProxyResult, error) {
 		return nil, fmt.Errorf("no proxies fetched from any source")
 	}
 
-	fmt.Printf("[proxy] fetched %d raw proxy URLs, testing liveness...\n", len(allURLs))
+	// Only test a subset to avoid 5+ minute runs
+	if len(allURLs) > 100 {
+		allURLs = allURLs[:100]
+	}
+
+	fmt.Printf("[proxy] testing %d proxies for liveness...\n", len(allURLs))
 
 	var mu sync.Mutex
 	var alive []string
