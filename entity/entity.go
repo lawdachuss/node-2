@@ -13,6 +13,31 @@ const (
 	PoolModePooled   = "pooled"
 )
 
+// SanitizeCookieString strips surrounding double quotes from each cookie in a
+// "name=value; name2=value2" string. Browser devtools exports and JSON storage
+// often wrap values in quotes (e.g. sessionid="abc"), and net/http rejects
+// quote bytes in Cookie.Value — silently dropping the cookie and breaking
+// Chaturbate auth (live channels report as "offline"). Call this whenever
+// cookies enter or leave Config so the in-memory and persisted values stay clean.
+func SanitizeCookieString(s string) string {
+	if s == "" {
+		return s
+	}
+	pairs := strings.Split(s, ";")
+	out := make([]string, 0, len(pairs))
+	for _, pair := range pairs {
+		kv := strings.SplitN(strings.TrimSpace(pair), "=", 2)
+		if len(kv) == 2 {
+			k := strings.Trim(strings.TrimSpace(kv[0]), "\"")
+			v := strings.Trim(strings.TrimSpace(kv[1]), "\"")
+			out = append(out, k+"="+v)
+		} else if len(kv) == 1 && kv[0] != "" {
+			out = append(out, strings.Trim(strings.TrimSpace(kv[0]), "\""))
+		}
+	}
+	return strings.Join(out, "; ")
+}
+
 // Event represents the type of event for the channel.
 type Event = string
 

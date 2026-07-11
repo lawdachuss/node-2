@@ -40,8 +40,8 @@ type vidHideUploadFileEntry struct {
 }
 
 type vidHideUploadResponse struct {
-	Msg    string                  `json:"msg"`
-	Status int                     `json:"status"`
+	Msg    string                   `json:"msg"`
+	Status int                      `json:"status"`
 	Files  []vidHideUploadFileEntry `json:"files"`
 }
 
@@ -63,7 +63,7 @@ func (u *VidHideUploader) UploadWithProgress(filePath string, progress ProgressF
 	var lastErr error
 
 	for ki := 0; ki < attempts; ki++ {
-		key := u.keys.current()
+		key := u.keys.take()
 		for retry := 1; retry <= maxRetriesPerKey; retry++ {
 			if retry > 1 {
 				time.Sleep(uploadBackoff(retry-2, lastErr))
@@ -74,7 +74,7 @@ func (u *VidHideUploader) UploadWithProgress(filePath string, progress ProgressF
 				lastErr = fmt.Errorf("upload file: %w", err)
 				if IsPermanentError(err) {
 					u.cachedServer = "" // clear cached server so next key gets its own
-					u.keys.rotate()
+
 					break
 				}
 				if isUploadRateLimited(err) {
@@ -85,7 +85,7 @@ func (u *VidHideUploader) UploadWithProgress(filePath string, progress ProgressF
 				if retry < maxRetriesPerKey {
 					continue
 				}
-				u.keys.rotate()
+
 				break
 			}
 
@@ -188,7 +188,7 @@ func (u *VidHideUploader) uploadFile(filePath string, progress ProgressFunc, api
 	fileStatus := uploadResp.Files[0].Status
 	if fileStatus != "" && !strings.EqualFold(fileStatus, "ok") {
 		errMsg := fmt.Errorf("upload rejected: file status %q (body: %s)", fileStatus, string(rawBody))
-		if strings.Contains(strings.ToLower(fileStatus), "too many") {
+		if isQuotaExceeded(fileStatus) {
 			return "", &permanentError{err: errMsg}
 		}
 		return "", errMsg

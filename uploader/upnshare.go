@@ -60,7 +60,7 @@ func (u *UPnShareUploader) UploadWithProgress(filePath string, progress Progress
 	var lastErr error
 
 	for ki := 0; ki < attempts; ki++ {
-		key := u.keys.current()
+		key := u.keys.take()
 		for retry := 1; retry <= maxRetriesPerKey; retry++ {
 			if retry > 1 {
 				time.Sleep(uploadBackoff(retry-2, lastErr))
@@ -70,7 +70,7 @@ func (u *UPnShareUploader) UploadWithProgress(filePath string, progress Progress
 			if err != nil {
 				lastErr = fmt.Errorf("upload file: %w", err)
 				if IsPermanentError(err) {
-					u.keys.rotate()
+
 					break
 				}
 				if isUploadRateLimited(err) {
@@ -81,7 +81,7 @@ func (u *UPnShareUploader) UploadWithProgress(filePath string, progress Progress
 				if retry < maxRetriesPerKey {
 					continue
 				}
-				u.keys.rotate()
+
 				break
 			}
 
@@ -98,15 +98,15 @@ type upnshareUploadEndpointResp struct {
 }
 
 type upnshareManageVideo struct {
-	ID        string `json:"id"`
-	Name      string `json:"name"`
-	Poster    string `json:"poster"`
-	Preview   string `json:"preview"`
-	AssetURL  string `json:"assetUrl"`
+	ID       string `json:"id"`
+	Name     string `json:"name"`
+	Poster   string `json:"poster"`
+	Preview  string `json:"preview"`
+	AssetURL string `json:"assetUrl"`
 }
 
 type upnshareManageListResp struct {
-	Data     []upnshareManageVideo `json:"data"`
+	Data []upnshareManageVideo `json:"data"`
 }
 
 type upnsharePlayer struct {
@@ -382,7 +382,7 @@ func (u *UPnShareUploader) getUploadEndpoint(apiKey string) (tusURL, accessToken
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
 		errMsg := fmt.Errorf("status %d: %s", resp.StatusCode, string(body))
-		if resp.StatusCode == http.StatusForbidden || resp.StatusCode == http.StatusUnauthorized {
+		if resp.StatusCode == http.StatusForbidden || resp.StatusCode == http.StatusUnauthorized || isQuotaExceeded(string(body)) {
 			return "", "", &permanentError{err: errMsg}
 		}
 		return "", "", errMsg

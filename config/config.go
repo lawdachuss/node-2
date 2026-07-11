@@ -224,7 +224,7 @@ func New(c *cli.Context) (*entity.Config, error) {
 		Compress:                compress,
 		Port:                    c.String("port"),
 		Interval:                c.Int("interval"),
-		Cookies:                 c.String("cookies"),
+		Cookies:                 entity.SanitizeCookieString(c.String("cookies")),
 		UserAgent:               c.String("user-agent"),
 		Domain:                  c.String("domain"),
 		ProxyURL:                c.String("proxy-url"),

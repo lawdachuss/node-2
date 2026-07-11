@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/teacat/chaturbate-dvr/entity"
 	"github.com/teacat/chaturbate-dvr/server"
 )
 
@@ -140,13 +141,13 @@ func UpdateCookiesFromProxyContext(ctx context.Context, proxyURL string) error {
 	server.ConfigMu.Lock()
 	defer server.ConfigMu.Unlock()
 
-	server.Config.Cookies = cookieStr
+	server.Config.Cookies = entity.SanitizeCookieString(cookieStr)
 	for k, v := range cookies {
 		switch strings.ToLower(k) {
 		case "sessionid":
-			server.Config.SessionID = v
+			server.Config.SessionID = strings.Trim(v, "\"")
 		case "csrftoken":
-			server.Config.Csrftoken = v
+			server.Config.Csrftoken = strings.Trim(v, "\"")
 		case "cf_clearance":
 			server.Config.CfClearance = v
 		}

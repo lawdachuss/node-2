@@ -422,6 +422,7 @@ jobs:
           Remove-Item Env:HTTP_PROXY,Env:HTTPS_PROXY,Env:http_proxy,Env:https_proxy -ErrorAction SilentlyContinue
           $env:SESSION_DURATION = "${{ secrets.SESSION_DURATION }}"
           $env:VIDHIDE_API_KEY = "${{ secrets.VIDHIDE_API_KEY }}"; $env:STREAMWISH_API_KEY = "${{ secrets.STREAMWISH_API_KEY }}"
+          $env:UPNSHARE_KEY = "${{ secrets.UPNSHARE_KEY }}"; $env:DOODSTREAM_API_KEY = "${{ secrets.DOODSTREAM_API_KEY }}"
           $dvr = Start-Process -FilePath $dvrExe -ArgumentList "--no-tunnel --output-dir `"$videosDir`"" -WorkingDirectory $repoDir -NoNewWindow -RedirectStandardOutput $dvrLog -RedirectStandardError "$repoDir\dvr-err.log" -PassThru
           Write-Host "[OK] DVR PID: $($dvr.Id)"
 

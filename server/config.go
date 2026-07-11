@@ -37,7 +37,7 @@ type persistedSettings struct {
 func SaveSettings() error {
 	ConfigMu.RLock()
 	s := persistedSettings{
-		Cookies:          Config.Cookies,
+		Cookies:          entity.SanitizeCookieString(Config.Cookies),
 		SessionID:        Config.SessionID,
 		Csrftoken:        Config.Csrftoken,
 		CfClearance:      Config.CfClearance,
@@ -81,7 +81,7 @@ func LoadSettings() error {
 
 	ConfigMu.Lock()
 	if s.Cookies != "" {
-		Config.Cookies = s.Cookies
+		Config.Cookies = entity.SanitizeCookieString(s.Cookies)
 	}
 	if s.SessionID != "" {
 		Config.SessionID = s.SessionID
@@ -165,7 +165,7 @@ func extractCookie(cookieStr, name string) string {
 	for _, pair := range strings.Split(cookieStr, ";") {
 		parts := strings.SplitN(strings.TrimSpace(pair), "=", 2)
 		if len(parts) == 2 && strings.TrimSpace(parts[0]) == name {
-			return strings.TrimSpace(parts[1])
+			return strings.Trim(strings.TrimSpace(parts[1]), "\"")
 		}
 	}
 	return ""

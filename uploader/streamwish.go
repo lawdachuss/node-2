@@ -41,8 +41,8 @@ type streamWishUploadFileEntry struct {
 }
 
 type streamWishUploadResponse struct {
-	Msg    string                     `json:"msg"`
-	Status int                        `json:"status"`
+	Msg    string                      `json:"msg"`
+	Status int                         `json:"status"`
 	Files  []streamWishUploadFileEntry `json:"files"`
 }
 
@@ -58,14 +58,16 @@ func (u *StreamWishUploader) UploadWithProgress(filePath string, progress Progre
 		return "", fmt.Errorf("StreamWish API key not configured")
 	}
 
-	// Try each key at most once; on permanent (quota) error, rotate to next key.
-	// For transient errors, retry the same key up to 3 times (standard backoff).
+	// Try each key at most once. take() atomically returns the next key, so
+	// concurrent uploads never draw the same key or skip one. On a permanent
+	// (quota) error the next iteration takes the following key; transient errors
+	// retry the same key up to 3 times (standard backoff).
 	attempts := u.keys.count()
 	maxRetriesPerKey := 3
 	var lastErr error
 
 	for ki := 0; ki < attempts; ki++ {
-		key := u.keys.current()
+		key := u.keys.take()
 		for retry := 1; retry <= maxRetriesPerKey; retry++ {
 			if retry > 1 {
 				time.Sleep(uploadBackoff(retry-2, lastErr))
@@ -74,10 +76,10 @@ func (u *StreamWishUploader) UploadWithProgress(filePath string, progress Progre
 			downloadLink, err := u.uploadFile(filePath, progress, key)
 			if err != nil {
 				lastErr = fmt.Errorf("upload file: %w", err)
-				// Permanent error (quota) — rotate to next key
+				// Permanent error (quota) — next iteration takes the next key
 				if IsPermanentError(err) {
 					u.cachedServer = "" // clear cached server so next key gets its own
-					u.keys.rotate()
+
 					break // break inner retry loop, try next key
 				}
 				if isUploadRateLimited(err) {
@@ -88,8 +90,8 @@ func (u *StreamWishUploader) UploadWithProgress(filePath string, progress Progre
 				if retry < maxRetriesPerKey {
 					continue
 				}
-				// All retries for this key exhausted — try next key
-				u.keys.rotate()
+				// All retries for this key exhausted — next iteration takes next key
+
 				break
 			}
 
@@ -192,8 +194,8 @@ func (u *StreamWishUploader) uploadFile(filePath string, progress ProgressFunc, 
 	fileStatus := uploadResp.Files[0].Status
 	if fileStatus != "" && !strings.EqualFold(fileStatus, "ok") {
 		errMsg := fmt.Errorf("upload rejected: file status %q (body: %s)", fileStatus, string(rawBody))
-		// "too many files" is a daily quota limit — retrying is futile
-		if strings.Contains(strings.ToLower(fileStatus), "too many") {
+		// Daily/account quota limit — retrying the same key is futile.
+		if isQuotaExceeded(fileStatus) {
 			return "", &permanentError{err: errMsg}
 		}
 		return "", errMsg

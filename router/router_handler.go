@@ -422,7 +422,7 @@ func UpdateConfig(c *gin.Context) {
 
 	server.ConfigMu.Lock()
 	if req.Cookies != "" {
-		server.Config.Cookies = req.Cookies
+		server.Config.Cookies = entity.SanitizeCookieString(req.Cookies)
 		// Parse individual fields from the raw cookie string
 		if server.Config.CfClearance == "" {
 			server.Config.CfClearance = extractCookieValue(server.Config.Cookies, "cf_clearance")
@@ -496,7 +496,7 @@ func extractCookieValue(cookieStr, name string) string {
 	for _, pair := range strings.Split(cookieStr, ";") {
 		parts := strings.SplitN(strings.TrimSpace(pair), "=", 2)
 		if len(parts) == 2 && strings.TrimSpace(parts[0]) == name {
-			return strings.TrimSpace(parts[1])
+			return strings.Trim(strings.TrimSpace(parts[1]), "\"")
 		}
 	}
 	return ""

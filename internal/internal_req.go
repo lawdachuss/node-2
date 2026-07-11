@@ -294,6 +294,13 @@ func ParseCookies(cookieStr string) map[string]string {
 			// Trim spaces around key and value
 			key := strings.TrimSpace(parts[0])
 			value := strings.TrimSpace(parts[1])
+			// Cookie values are often wrapped in double quotes when exported
+			// from browser devtools or stored as JSON. net/http rejects quote
+			// bytes in Cookie.Value and silently drops the cookie, which breaks
+			// Chaturbate auth and makes live channels report as "offline".
+			// Strip the surrounding quotes from both name and value.
+			key = strings.Trim(key, "\"")
+			value = strings.Trim(value, "\"")
 			// Store cookie name and value in the map
 			cookies[key] = value
 		}

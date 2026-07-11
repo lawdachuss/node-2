@@ -50,10 +50,10 @@ func newNoProxyClient(timeout time.Duration) *http.Client {
 	return &http.Client{
 		Timeout: timeout,
 		Transport: &http.Transport{
-			Proxy: nil, // never use environment proxy
-			DialContext:         dialWithTuning(30 * time.Second),
-			MaxIdleConns:        200,
-			MaxIdleConnsPerHost: 50,
+			Proxy:                 nil, // never use environment proxy
+			DialContext:           dialWithTuning(30 * time.Second),
+			MaxIdleConns:          200,
+			MaxIdleConnsPerHost:   50,
 			IdleConnTimeout:       120 * time.Second,
 			TLSHandshakeTimeout:   15 * time.Second,
 			ExpectContinueTimeout: 1 * time.Second,
@@ -235,12 +235,25 @@ func (kr *keyRing) current() string {
 	return kr.keys[kr.index]
 }
 
-func (kr *keyRing) rotate() {
+// take atomically returns the current key and advances the ring to the next
+// key within a single locked critical section. This prevents two concurrent
+// uploads (each running its own UploadWithProgress on the shared keyRing) from
+// reading the same key before either has rotated, which could otherwise hand
+// the same API key to two files or skip a key.
+//
+// With a single key the index does not advance (rotate is a no-op), so every
+// call returns that key — preserving the original "one key" behavior.
+func (kr *keyRing) take() string {
 	kr.mu.Lock()
 	defer kr.mu.Unlock()
+	if len(kr.keys) == 0 {
+		return ""
+	}
+	k := kr.keys[kr.index]
 	if len(kr.keys) > 1 {
 		kr.index = (kr.index + 1) % len(kr.keys)
 	}
+	return k
 }
 
 func (kr *keyRing) count() int {
@@ -290,8 +303,12 @@ func (m *MultiHostUploader) initHosts() {
 			return
 		}
 		upCount, doCount := -1, -1
-		if m.upnshare != nil { upCount = m.upnshare.keys.count() }
-		if m.doodstream != nil { doCount = m.doodstream.keys.count() }
+		if m.upnshare != nil {
+			upCount = m.upnshare.keys.count()
+		}
+		if m.doodstream != nil {
+			doCount = m.doodstream.keys.count()
+		}
 		fmt.Printf("[UPLOADER] initHosts: upnshare keys=%d doodstream keys=%d\n", upCount, doCount)
 		m.hosts = map[string]uploaderFunc{}
 		m.hosts["GoFile"] = m.gofile.UploadWithProgress
@@ -411,6 +428,26 @@ func isUploadRateLimited(err error) bool {
 	return strings.Contains(msg, "rate limit") ||
 		strings.Contains(msg, "429") ||
 		strings.Contains(msg, "too many requests")
+}
+
+// isQuotaExceeded returns true if the given API message indicates a daily,
+// account, or per-key upload quota/limit that won't clear by retrying the same
+// key. Uploaders use this to wrap the error as a permanentError so the key-ring
+// rotates to the next key (and the outer retry loop skips the host).
+//
+// Covers the common phrasings hosts use: "too many files", "daily limit
+// reached", "quota exceeded", "upload limit", "maximum ... uploads", etc.
+func isQuotaExceeded(msg string) bool {
+	m := strings.ToLower(msg)
+	return strings.Contains(m, "too many") ||
+		strings.Contains(m, "daily limit") ||
+		strings.Contains(m, "daily upload") ||
+		strings.Contains(m, "quota") ||
+		strings.Contains(m, "limit reached") ||
+		strings.Contains(m, "limit exceeded") ||
+		strings.Contains(m, "upload limit") ||
+		strings.Contains(m, "maximum") && strings.Contains(m, "upload") ||
+		strings.Contains(m, "exceeded") && strings.Contains(m, "limit")
 }
 
 // uploadBackoff returns the appropriate backoff duration based on whether

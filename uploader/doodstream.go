@@ -61,7 +61,7 @@ func (u *DoodStreamUploader) UploadWithProgress(filePath string, progress Progre
 	var lastErr error
 
 	for ki := 0; ki < attempts; ki++ {
-		key := u.keys.current()
+		key := u.keys.take()
 		for retry := 1; retry <= maxRetriesPerKey; retry++ {
 			if retry > 1 {
 				time.Sleep(uploadBackoff(retry-2, lastErr))
@@ -72,7 +72,7 @@ func (u *DoodStreamUploader) UploadWithProgress(filePath string, progress Progre
 				lastErr = fmt.Errorf("upload file: %w", err)
 				if IsPermanentError(err) {
 					u.cachedServer = ""
-					u.keys.rotate()
+
 					break
 				}
 				if isUploadRateLimited(err) {
@@ -83,7 +83,7 @@ func (u *DoodStreamUploader) UploadWithProgress(filePath string, progress Progre
 				if retry < maxRetriesPerKey {
 					continue
 				}
-				u.keys.rotate()
+
 				break
 			}
 
@@ -112,7 +112,11 @@ func (u *DoodStreamUploader) getUploadServer(apiKey string) (string, error) {
 	}
 	if resp.StatusCode != http.StatusOK {
 		bodyBytes, _ := io.ReadAll(resp.Body)
-		return "", fmt.Errorf("status %d: %s", resp.StatusCode, string(bodyBytes))
+		errMsg := fmt.Errorf("status %d: %s", resp.StatusCode, string(bodyBytes))
+		if resp.StatusCode == http.StatusForbidden || resp.StatusCode == http.StatusUnauthorized || isQuotaExceeded(string(bodyBytes)) {
+			return "", &permanentError{err: errMsg}
+		}
+		return "", errMsg
 	}
 
 	var serverResp doodStreamServerResponse
@@ -120,7 +124,11 @@ func (u *DoodStreamUploader) getUploadServer(apiKey string) (string, error) {
 		return "", fmt.Errorf("decode: %w", err)
 	}
 	if serverResp.Status != 200 {
-		return "", fmt.Errorf("api status %d: %s", serverResp.Status, serverResp.Msg)
+		errMsg := fmt.Errorf("api status %d: %s", serverResp.Status, serverResp.Msg)
+		if isQuotaExceeded(serverResp.Msg) {
+			return "", &permanentError{err: errMsg}
+		}
+		return "", errMsg
 	}
 	if serverResp.Result == "" {
 		return "", fmt.Errorf("no upload server URL in response")
@@ -175,7 +183,11 @@ func (u *DoodStreamUploader) uploadFile(filePath string, progress ProgressFunc, 
 	}
 	if resp.StatusCode != http.StatusOK {
 		bodyBytes, _ := io.ReadAll(resp.Body)
-		return "", fmt.Errorf("upload failed with status %d: %s", resp.StatusCode, string(bodyBytes))
+		errMsg := fmt.Errorf("upload failed with status %d: %s", resp.StatusCode, string(bodyBytes))
+		if resp.StatusCode == http.StatusForbidden || resp.StatusCode == http.StatusUnauthorized || isQuotaExceeded(string(bodyBytes)) {
+			return "", &permanentError{err: errMsg}
+		}
+		return "", errMsg
 	}
 
 	rawBody, _ := io.ReadAll(resp.Body)
@@ -186,7 +198,11 @@ func (u *DoodStreamUploader) uploadFile(filePath string, progress ProgressFunc, 
 	}
 
 	if uploadResp.Status != 200 {
-		return "", fmt.Errorf("upload failed: status %d — %s (body: %s)", uploadResp.Status, uploadResp.Msg, string(rawBody))
+		errMsg := fmt.Errorf("upload failed: status %d — %s (body: %s)", uploadResp.Status, uploadResp.Msg, string(rawBody))
+		if isQuotaExceeded(uploadResp.Msg) {
+			return "", &permanentError{err: errMsg}
+		}
+		return "", errMsg
 	}
 
 	if len(uploadResp.Result) == 0 {
