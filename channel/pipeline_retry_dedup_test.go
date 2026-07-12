@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/teacat/chaturbate-dvr/database"
 	"github.com/teacat/chaturbate-dvr/entity"
@@ -107,10 +108,22 @@ func TestPipelineQueueDedup(t *testing.T) {
 	pq.EnqueueFile(path)
 	pq.EnqueueFile(path)
 
-	pq.mu.Lock()
-	n := len(pq.pipelines)
-	pq.mu.Unlock()
-	if n != 1 {
-		t.Fatalf("expected 1 queued pipeline after duplicate enqueue, got %d", n)
+	// The dedup guarantee is that the same file never produces two queued
+	// pipelines.  The worker may have already consumed the (single) pipeline
+	// by the time we look, so poll briefly and only fail if we ever observe
+	// two queued at once — the actual invariant EnqueueFile protects.
+	sawTwo := false
+	for i := 0; i < 200; i++ {
+		pq.mu.Lock()
+		n := len(pq.pipelines)
+		pq.mu.Unlock()
+		if n == 2 {
+			sawTwo = true
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if sawTwo {
+		t.Fatalf("dedup failed: two pipelines queued for the same file")
 	}
 }

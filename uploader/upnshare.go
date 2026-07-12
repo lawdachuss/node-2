@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io"
 	"math/big"
-	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -27,19 +26,10 @@ type UPnShareUploader struct {
 
 func NewUPnShareUploader(apiKeys []string) *UPnShareUploader {
 	return &UPnShareUploader{
-		keys: newKeyRing(apiKeys),
+		keys: sharedKeyRing(apiKeys),
 		client: &http.Client{
-			Timeout: 120 * time.Minute,
-			Transport: &http.Transport{
-				MaxIdleConns:          10,
-				MaxIdleConnsPerHost:   2,
-				IdleConnTimeout:       90 * time.Second,
-				DisableCompression:    true,
-				TLSHandshakeTimeout:   30 * time.Second,
-				ResponseHeaderTimeout: 120 * time.Second,
-				DisableKeepAlives:     true,
-				DialContext:           (&net.Dialer{Timeout: 30 * time.Second}).DialContext,
-			},
+			Timeout: uploadClientTimeout,
+			Transport: newUploadTransport(true),
 		},
 	}
 }
@@ -56,7 +46,7 @@ func (u *UPnShareUploader) UploadWithProgress(filePath string, progress Progress
 	}
 
 	attempts := u.keys.count()
-	maxRetriesPerKey := 3
+	maxRetriesPerKey := 2
 	var lastErr error
 
 	for ki := 0; ki < attempts; ki++ {

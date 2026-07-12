@@ -1,6 +1,7 @@
 package channel
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -45,8 +46,15 @@ func embedURLFromLink(host, link string) string {
 }
 
 const (
-	maxChannelUploadAttempts = 8
+	maxChannelUploadAttempts = 3
 	channelUploadRetryDelay  = 5 * time.Second
+
+	// uploadStageMaxDuration bounds the total time spent retrying a single
+	// file's uploads.  Without this, a host that accepts the connection but
+	// stalls (per-host HTTP timeout is minutes-long) could hold the whole
+	// stage for hours across the 8 attempts.  Once exceeded we stop retrying
+	// and accept whatever hosts already succeeded.
+	uploadStageMaxDuration = 90 * time.Minute
 )
 
 // uploadFile uploads the given file to all configured hosts.
@@ -72,6 +80,12 @@ func (ch *Channel) uploadFile(filePath string, thumbURL, spriteURL, previewURL s
 
 	if _, err := os.Stat(filePath); err != nil {
 		ch.Error("upload: file not found %s: %v — skipping upload", filename, err)
+		return false
+	}
+
+	// Reject corrupt/invalid videos before pushing them to any host.
+	if ok, reason := validateVideoFile(filePath, false); !ok {
+		ch.Error("upload: corrupt/invalid file %s — not uploading: %s", filename, reason)
 		return false
 	}
 
@@ -121,12 +135,31 @@ func (ch *Channel) uploadFile(filePath string, thumbURL, spriteURL, previewURL s
 
 	var results []uploader.UploadResult
 	var success []uploader.UploadResult
+	stageStart := time.Now()
+	stageDeadline := stageStart.Add(uploadStageMaxDuration)
+	stageCtx, stageCancel := context.WithTimeout(context.Background(), uploadStageMaxDuration)
+	defer stageCancel()
 	for attempt := 1; attempt <= maxChannelUploadAttempts; attempt++ {
+		if time.Now().After(stageDeadline) {
+			ch.Warn("upload: stage deadline (%s) exceeded for %s — accepting partial success (%d/%d hosts)",
+				uploadStageMaxDuration, filename, len(success), len(allHosts))
+			break
+		}
 		if attempt > 1 && len(hostsToTry) == 0 {
 			break
 		}
+		attemptCh := make(chan []uploader.UploadResult, 1)
+		go func() {
+			attemptCh <- upl.UploadSelected(filePath, hostsToTry)
+		}()
 		var attemptResults []uploader.UploadResult
-		attemptResults = upl.UploadSelected(filePath, hostsToTry)
+		select {
+		case attemptResults = <-attemptCh:
+		case <-stageCtx.Done():
+			ch.Warn("upload: stage deadline (%s) reached mid-attempt for %s — aborting upload stage",
+				uploadStageMaxDuration, filename)
+			goto uploadStageDone
+		}
 		results = append(results, attemptResults...)
 
 		// Save journal entries for each result
@@ -173,6 +206,8 @@ func (ch *Channel) uploadFile(filePath string, thumbURL, spriteURL, previewURL s
 			}
 		}
 	}
+
+uploadStageDone:
 
 	if len(results) > 0 {
 		ch.Info("upload: finished — %d/%d hosts succeeded", len(success), len(allHosts))

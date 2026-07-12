@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"mime/multipart"
-	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -25,16 +24,8 @@ type GoFileUploader struct {
 func NewGoFileUploader() *GoFileUploader {
 	return &GoFileUploader{
 		client: &http.Client{
-			Timeout: 120 * time.Minute, // Long timeout for large video uploads
-			Transport: &http.Transport{
-				MaxIdleConns:          100,
-				MaxIdleConnsPerHost:   100,
-				IdleConnTimeout:       90 * time.Second,
-				DisableCompression:    true,
-				TLSHandshakeTimeout:   30 * time.Second,
-				ResponseHeaderTimeout: 90 * time.Second, // fail fast if server accepts but never responds
-				DialContext:           (&net.Dialer{Timeout: 30 * time.Second}).DialContext,
-			},
+			Timeout: uploadClientTimeout, // Long timeout for large video uploads
+			Transport: newUploadTransport(false),
 		},
 	}
 }

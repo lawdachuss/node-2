@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"net"
 	"net/http"
 	"time"
 )
@@ -24,14 +23,8 @@ func NewVoeSXUploader(apiKey string) *VoeSXUploader {
 	return &VoeSXUploader{
 		apiKey: apiKey,
 		client: &http.Client{
-			Timeout: 120 * time.Minute,
-			Transport: &http.Transport{
-				MaxIdleConns:        100,
-				MaxIdleConnsPerHost: 100,
-				IdleConnTimeout:     90 * time.Second,
-				DisableCompression:  true,
-				DialContext:         (&net.Dialer{Timeout: 30 * time.Second}).DialContext,
-			},
+			Timeout: uploadClientTimeout,
+		Transport: newUploadTransport(false),
 		},
 	}
 }

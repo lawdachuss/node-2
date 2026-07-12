@@ -1,6 +1,7 @@
 package channel
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -36,7 +37,28 @@ func (s Stage) String() string { return stageNames[s] }
 
 // maxPipelineRetries is the number of times a failed pipeline will be retried
 // across restarts before it is abandoned and its state row is deleted.
-const maxPipelineRetries = 5
+const maxPipelineRetries = 3
+
+// pipelineWorkerCount is how many recordings a single channel processes
+// concurrently.  The post-record work (mux, thumbnail, upload) is independent
+// per file, so running several at once dramatically lowers end-to-end latency
+// when a channel produces many recordings.  ffmpeg is still globally bounded by
+// config.ffmpegSem (NumCPU*3) and uploads by UploadSem, so raising this only
+// adds useful concurrency without exhausting CPU/disk/network.
+const pipelineWorkerCount = 4
+
+const (
+	// pipelineReapInterval is how often the stale-pipeline reaper runs.
+	pipelineReapInterval = 10 * time.Minute
+	// pipelineMaxAge is the maximum age of an in-progress pipeline state
+	// before the reaper force-deletes it.  Any pipeline still recorded as
+	// "in_progress" beyond this is stuck (the owning process crashed, or a
+	// stalled upload the stage deadline failed to abort) and must not linger
+	// forever showing a green heartbeat with a phantom upload.  Normal
+	// pipelines finish well within uploadStageMaxDuration (~90m) plus overhead,
+	// so 2h is a safe backstop.
+	pipelineMaxAge = 2 * time.Hour
+)
 
 func stageFromString(s string) Stage {
 	for k, v := range stageNames {
@@ -110,6 +132,7 @@ func (p *Pipeline) toDBState() *database.PipelineState {
 		Filename:     p.Filename,
 		Username:     p.Username,
 		FileSize:     p.FileSize,
+		NodeID:       server.NodeID(),
 		CurrentStage: p.CurrentStage.String(),
 		Failed:       p.Failed,
 		LastError:    p.LastError,
@@ -180,6 +203,12 @@ func (p *Pipeline) stageUploadVideos(ch *Channel) error {
 		return err
 	}
 
+	// Reject corrupt/invalid videos before pushing them to any host.
+	if ok, reason := validateVideoFile(filePath, false); !ok {
+		ch.Error("upload: corrupt/invalid file %s — not uploading: %s", filename, reason)
+		return fmt.Errorf("file failed integrity check: %s", reason)
+	}
+
 	// Load completed hosts from journal
 	var completedHosts []string
 	if p.FileHash != "" {
@@ -231,6 +260,19 @@ func (p *Pipeline) stageUploadVideos(ch *Channel) error {
 
 	var results []uploader.UploadResult
 	var success []uploader.UploadResult
+
+	// Bound total time spent retrying this file's uploads so a stalled host
+	// (long per-host HTTP timeout) cannot hang the pipeline for hours.
+	stageStart := time.Now()
+	stageDeadline := stageStart.Add(uploadStageMaxDuration)
+	// Hard cap: abort the entire upload stage if it runs past the deadline,
+	// even when an individual host is stalled mid-request.  The per-host
+	// client timeout bounds a single request, but a stalled host multiplied
+	// across retries could otherwise exceed the deadline.  Cancelling the
+	// context makes in-flight requests return promptly so we never hang for
+	// hours waiting on a dead host.
+	stageCtx, stageCancel := context.WithTimeout(context.Background(), uploadStageMaxDuration)
+	defer stageCancel()
 
 	// Set up per-upload progress callback for live UI tracking.
 	// The callback is called from each uploader's goroutine as bytes are sent.
@@ -323,11 +365,26 @@ func (p *Pipeline) stageUploadVideos(ch *Channel) error {
 	})
 
 	for attempt := 1; attempt <= maxChannelUploadAttempts; attempt++ {
+		if time.Now().After(stageDeadline) {
+			ch.Warn("upload: stage deadline (%s) exceeded for %s — accepting partial success (%d/%d hosts)",
+				uploadStageMaxDuration, filename, len(success), len(allHosts))
+			break
+		}
 		if attempt > 1 && len(hostsToTry) == 0 {
 			break
 		}
+		attemptCh := make(chan []uploader.UploadResult, 1)
+		go func() {
+			attemptCh <- upl.UploadSelected(filePath, hostsToTry)
+		}()
 		var attemptResults []uploader.UploadResult
-		attemptResults = upl.UploadSelected(filePath, hostsToTry)
+		select {
+		case attemptResults = <-attemptCh:
+		case <-stageCtx.Done():
+			ch.Warn("upload: stage deadline (%s) reached mid-attempt for %s — aborting upload stage",
+				uploadStageMaxDuration, filename)
+			goto uploadStageDone
+		}
 		results = append(results, attemptResults...)
 
 		success = uploader.GetSuccessfulUploads(results)
@@ -376,6 +433,8 @@ func (p *Pipeline) stageUploadVideos(ch *Channel) error {
 			}
 		}
 	}
+
+uploadStageDone:
 
 	if len(success) == 0 {
 		ch.Error("upload: all hosts failed for %s", filename)
@@ -571,12 +630,15 @@ type PipelineQueue struct {
 
 	ch      *Channel
 	history []entity.PendingEntry // last 50 completed/failed pipelines
+
+	reaperStop chan struct{} // closed by Stop() to terminate the reaper goroutine
 }
 
 // NewPipelineQueue creates a new pipeline queue for a channel.
 func NewPipelineQueue(ch *Channel) *PipelineQueue {
 	pq := &PipelineQueue{ch: ch}
 	pq.cond = sync.NewCond(&pq.mu)
+	pq.reaperStop = make(chan struct{})
 	return pq
 }
 
@@ -596,9 +658,13 @@ func (pq *PipelineQueue) startOnce() {
 	}
 	if !pq.started {
 		pq.started = true
+		pq.reaperStop = make(chan struct{})
 		pq.mu.Unlock()
-		pq.wg.Add(1)
-		go pq.processLoop()
+		for i := 0; i < pipelineWorkerCount; i++ {
+			pq.wg.Add(1)
+			go pq.processLoop()
+		}
+		go pq.reapLoop()
 		return
 	}
 	pq.mu.Unlock()
@@ -610,10 +676,15 @@ func (pq *PipelineQueue) Stop() {
 	pq.stopped = true
 	pq.mu.Unlock()
 	pq.cond.Broadcast()
+	if pq.reaperStop != nil {
+		close(pq.reaperStop)
+		pq.reaperStop = nil
+	}
 	pq.wg.Wait()
 }
 
-// processLoop is the worker goroutine that processes pipelines sequentially.
+// processLoop is one of pipelineWorkerCount worker goroutines that drain the
+// pipeline queue concurrently for a single channel.
 func (pq *PipelineQueue) processLoop() {
 	defer pq.wg.Done()
 	for {
@@ -630,6 +701,67 @@ func (pq *PipelineQueue) processLoop() {
 		pq.mu.Unlock()
 
 		pq.processPipeline(p)
+	}
+}
+
+// reapLoop periodically reclaims pipeline states that are stuck "in_progress"
+// forever (e.g. the owning process crashed, or a stalled upload outlived the
+// stage deadline).  Without this, a single wedged file shows a green heartbeat
+// indefinitely and is never retried or cleaned up.
+func (pq *PipelineQueue) reapLoop() {
+	ticker := time.NewTicker(pipelineReapInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-pq.reaperStop:
+			return
+		case <-ticker.C:
+			pq.reapStalePipelines()
+		}
+	}
+}
+
+// reapStalePipelines deletes in-progress pipeline states older than
+// pipelineMaxAge.  Deletion is idempotent, so every node may run the reaper
+// safely (two nodes deleting the same row is a no-op).  The local muxed file is
+// left on disk; the orphan scanner re-ingests it if it is still recoverable.
+func (pq *PipelineQueue) reapStalePipelines() {
+	states, err := server.LoadAllPipelineStates()
+	if err != nil {
+		pq.ch.Warn("pipeline: reaper could not load states: %v", err)
+		return
+	}
+	if len(states) == 0 {
+		return
+	}
+	cutoff := time.Now().Add(-pipelineMaxAge)
+	for _, s := range states {
+		if s.Failed {
+			continue
+		}
+		if s.CurrentStage == StageDone.String() {
+			continue
+		}
+		if s.CreatedAt == "" {
+			continue
+		}
+		created, perr := time.Parse(time.RFC3339Nano, s.CreatedAt)
+		if perr != nil {
+			created, perr = time.Parse(time.RFC3339, s.CreatedAt)
+		}
+		if perr != nil {
+			// Unknown timestamp format — leave it alone rather than risk
+			// deleting a row we can't age.
+			continue
+		}
+		if created.After(cutoff) {
+			continue
+		}
+		pq.ch.Warn("pipeline: reaping stalled %s (stage=%s, created=%s) — deleting phantom in-progress state",
+			s.Filename, s.CurrentStage, s.CreatedAt)
+		if delErr := server.DeletePipelineState(s.FileHash); delErr != nil {
+			pq.ch.Warn("pipeline: reaper could not delete %s: %v", s.Filename, delErr)
+		}
 	}
 }
 
@@ -845,7 +977,7 @@ func (pq *PipelineQueue) processPipeline(p *Pipeline) {
 	} else if !p.Failed {
 		ch.Info("pipeline: %s paused at stage %s (will retry)", filename, p.CurrentStage)
 	}
-	ch.SetUploadProgress("", "", 0, 0, 0, 0, 0, "", nil)
+	ch.ClearUploadProgress(filename)
 }
 
 // containsHash returns true if a pipeline with the given file hash is already

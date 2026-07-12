@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -83,18 +84,27 @@ type Channel struct {
 	uploadSem         chan struct{}  // per-channel upload semaphore (1 at a time)
 	PipelineQueue     *PipelineQueue // ordered pipeline for thumbnails → upload → metadata → cleanup
 
-	// Upload progress tracking — updated by the pipeline worker goroutine.
+	// Upload progress tracking — updated by the pipeline worker goroutines.
 	// Thread-safe via uploadStatusMu; visible in the UI via ExportInfo().
-	uploadStatusMu   sync.Mutex
-	UploadStatus     string             // human-readable status: "", "generating thumbnails…", "uploading (2/5 hosts)…"
-	UploadProgress   float64            // 0–100, best-effort estimate
-	UploadFilename   string             // file currently being processed by the pipeline
-	UploadHostCount  int                // how many hosts have completed
-	UploadHostTotal  int                // total hosts to upload to
-	UploadBytesCur   int64              // bytes uploaded so far
-	UploadBytesTotal int64              // total file size
-	UploadSpeed      string             // formatted aggregate speed
-	UploadHosts      []entity.HostEntry // per-host progress
+	// Multiple in-flight uploads per channel are tracked (keyed by filename)
+	// so pipelineWorkerCount concurrent pipelines each report independently
+	// instead of overwriting a single shared snapshot.
+	uploadStatusMu sync.Mutex
+	activeUploads  map[string]*uploadSnapshot // keyed by filename
+}
+
+// uploadSnapshot is one in-flight upload for a channel.
+type uploadSnapshot struct {
+	Channel      string
+	Filename     string
+	Status       string
+	Progress     float64
+	HostCount    int
+	HostTotal    int
+	BytesCurrent int64
+	BytesTotal   int64
+	Speed        string
+	Hosts        []entity.HostEntry
 }
 
 // New creates a new channel instance with the given manager and configuration.
@@ -219,19 +229,32 @@ func (ch *Channel) SetLastError(err error) {
 	ch.Update()
 }
 
-// SetUploadProgress updates live upload status visible in the UI.
-// Safe for concurrent calls from pipeline worker goroutines.
+// SetUploadProgress updates live upload status for a single in-flight file,
+// visible in the UI. Safe for concurrent calls from pipeline worker
+// goroutines — each call is keyed by filename so multiple concurrent uploads
+// on the same channel are tracked independently.
 func (ch *Channel) SetUploadProgress(filename, status string, progress float64, hostCount, hostTotal int, bytesCur, bytesTotal int64, speed string, hosts []entity.HostEntry) {
 	ch.uploadStatusMu.Lock()
-	ch.UploadFilename = filename
-	ch.UploadStatus = status
-	ch.UploadProgress = progress
-	ch.UploadHostCount = hostCount
-	ch.UploadHostTotal = hostTotal
-	ch.UploadBytesCur = bytesCur
-	ch.UploadBytesTotal = bytesTotal
-	ch.UploadSpeed = speed
-	ch.UploadHosts = hosts
+	if ch.activeUploads == nil {
+		ch.activeUploads = make(map[string]*uploadSnapshot)
+	}
+	if filename == "" {
+		// Legacy global clear (no specific file) — wipe everything.
+		ch.activeUploads = make(map[string]*uploadSnapshot)
+	} else {
+		ch.activeUploads[filename] = &uploadSnapshot{
+			Channel:      ch.Config.Username,
+			Filename:     filename,
+			Status:       status,
+			Progress:     progress,
+			HostCount:    hostCount,
+			HostTotal:    hostTotal,
+			BytesCurrent: bytesCur,
+			BytesTotal:   bytesTotal,
+			Speed:        speed,
+			Hosts:        hosts,
+		}
+	}
 	ch.uploadStatusMu.Unlock()
 	// Trigger a UI update so progress is reflected immediately.
 	select {
@@ -244,26 +267,76 @@ func (ch *Channel) SetUploadProgress(filename, status string, progress float64, 
 	}
 }
 
-// UploadEntry returns the current upload progress entry for this channel.
-func (ch *Channel) UploadEntry() entity.UploadEntry {
+// ClearUploadProgress removes a single file's live upload status. Called by
+// the pipeline's deferred cleanup so finishing one of several concurrent
+// uploads does not wipe the others on the same channel.
+func (ch *Channel) ClearUploadProgress(filename string) {
+	if filename == "" {
+		return
+	}
+	ch.uploadStatusMu.Lock()
+	if ch.activeUploads != nil {
+		delete(ch.activeUploads, filename)
+	}
+	ch.uploadStatusMu.Unlock()
+	select {
+	case ch.UpdateCh <- true:
+	default:
+	}
+	if server.Manager != nil {
+		server.Manager.PublishUploadState()
+	}
+}
+
+// primaryUpload returns the most relevant in-flight upload for the channel
+// card (prefers an actively-uploading file, else the most-progressed). Used by
+// ExportInfo, which shows a single upload summary per channel.
+func (ch *Channel) primaryUpload() *uploadSnapshot {
 	ch.uploadStatusMu.Lock()
 	defer ch.uploadStatusMu.Unlock()
-	hosts := ch.UploadHosts
-	if hosts == nil {
-		hosts = []entity.HostEntry{}
+	var best *uploadSnapshot
+	for _, s := range ch.activeUploads {
+		if best == nil {
+			best = s
+			continue
+		}
+		if strings.Contains(s.Status, "uploading") && !strings.Contains(best.Status, "uploading") {
+			best = s
+		} else if s.Progress > best.Progress {
+			best = s
+		}
 	}
-	return entity.UploadEntry{
-		Channel:      ch.Config.Username,
-		Filename:     ch.UploadFilename,
-		Status:       ch.UploadStatus,
-		Progress:     ch.UploadProgress,
-		HostCount:    ch.UploadHostCount,
-		HostTotal:    ch.UploadHostTotal,
-		BytesCurrent: ch.UploadBytesCur,
-		BytesTotal:   ch.UploadBytesTotal,
-		Speed:        ch.UploadSpeed,
-		Hosts:        hosts,
+	return best
+}
+
+// UploadEntry returns one UploadEntry per in-flight upload for this channel
+// (so concurrent pipelineWorkerCount uploads are all visible in the UI).
+func (ch *Channel) UploadEntry() []entity.UploadEntry {
+	ch.uploadStatusMu.Lock()
+	defer ch.uploadStatusMu.Unlock()
+	if len(ch.activeUploads) == 0 {
+		return nil
 	}
+	out := make([]entity.UploadEntry, 0, len(ch.activeUploads))
+	for _, s := range ch.activeUploads {
+		hosts := s.Hosts
+		if hosts == nil {
+			hosts = []entity.HostEntry{}
+		}
+		out = append(out, entity.UploadEntry{
+			Channel:      s.Channel,
+			Filename:     s.Filename,
+			Status:       s.Status,
+			Progress:     s.Progress,
+			HostCount:    s.HostCount,
+			HostTotal:    s.HostTotal,
+			BytesCurrent: s.BytesCurrent,
+			BytesTotal:   s.BytesTotal,
+			Speed:        s.Speed,
+			Hosts:        hosts,
+		})
+	}
+	return out
 }
 
 // ExportInfo exports the channel information as a ChannelInfo struct.
@@ -314,11 +387,14 @@ func (ch *Channel) exportInfo(includeLogs bool) *entity.ChannelInfo {
 		ch.logsMu.Unlock()
 	}
 
-	ch.uploadStatusMu.Lock()
-	uploadStatus := ch.UploadStatus
-	uploadProgress := ch.UploadProgress
-	uploadFilename := ch.UploadFilename
-	ch.uploadStatusMu.Unlock()
+	primary := ch.primaryUpload()
+	var uploadStatus, uploadFilename string
+	var uploadProgress float64
+	if primary != nil {
+		uploadStatus = primary.Status
+		uploadProgress = primary.Progress
+		uploadFilename = primary.Filename
+	}
 
 	siteName := ch.Config.Site
 	if siteName == "" {

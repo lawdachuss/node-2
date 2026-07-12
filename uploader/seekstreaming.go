@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -31,17 +30,8 @@ func NewSeekStreamingUploader(key string) *SeekStreamingUploader {
 	return &SeekStreamingUploader{
 		key: key,
 		client: &http.Client{
-			Timeout: 120 * time.Minute,
-			Transport: &http.Transport{
-				MaxIdleConns:          10,
-				MaxIdleConnsPerHost:   2,
-				IdleConnTimeout:       90 * time.Second,
-				DisableCompression:    true,
-				TLSHandshakeTimeout:   30 * time.Second,
-				ResponseHeaderTimeout: 120 * time.Second,
-				DisableKeepAlives:     true,
-				DialContext:           (&net.Dialer{Timeout: 30 * time.Second}).DialContext,
-			},
+			Timeout: uploadClientTimeout,
+		Transport: newUploadTransport(true),
 		},
 	}
 }

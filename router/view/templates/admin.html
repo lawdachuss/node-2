@@ -624,6 +624,47 @@
         </div>
     </details>
 
+    <!-- ════════ LIVE UPLOAD MATRIX ════════ -->
+    <style>
+        .upload-matrix { margin-top: 8px; max-height: 62vh; overflow-y: auto; }
+        .matrix-section { border: 1px solid var(--border-color, #27272a); border-radius: 8px; margin-bottom: 10px; background: var(--bg-card, #0a0a0e); }
+        .matrix-section-head { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-bottom: 1px solid var(--border-color, #27272a); position: sticky; top: 0; background: var(--bg-card, #0a0a0e); z-index: 1; }
+        .matrix-section-title { font-weight: 700; font-size: 13px; color: var(--text-primary, #e4e4e7); }
+        .matrix-section-count { font-size: 10px; color: var(--text-muted, #52525b); }
+        .matrix-section-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px; padding: 10px; }
+        .host-card { border: 1px solid var(--border-color, #27272a); border-radius: 8px; padding: 10px; background: var(--bg-card, #0a0a0e); }
+        .host-card.ok { border-color: rgba(16,185,129,0.5); }
+        .host-card.fail { border-color: rgba(239,68,68,0.5); }
+        .host-card.pending { opacity: 0.55; }
+        .host-card.active { border-color: rgba(59,130,246,0.5); }
+        .host-card-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+        .host-name { font-weight: 600; font-size: 13px; color: var(--text-primary, #e4e4e7); }
+        .host-status { font-size: 10px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted, #52525b); }
+        .host-card.ok .host-status { color: #10b981; }
+        .host-card.fail .host-status { color: #ef4444; }
+        .host-card.active .host-status { color: #3b82f6; }
+        .host-card-file { font-size: 10px; color: var(--text-muted, #52525b); margin-bottom: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .host-card-meta { display: flex; justify-content: space-between; font-size: 11px; margin-top: 4px; color: var(--text-muted, #52525b); }
+        .host-card-bytes { font-size: 10px; color: var(--text-muted, #52525b); margin-top: 2px; }
+        .host-card .progress-bar { height: 6px; }
+        .host-card .progress-bar .fill { background: #3b82f6; transition: width 0.4s; }
+        .host-card .progress-bar .fill.ok { background: #10b981; }
+        .host-card .progress-bar .fill.fail { background: #ef4444; }
+        .host-card .progress-bar .fill.pending { background: #52525b; }
+    </style>
+    <details class="section" open>
+        <summary>
+            <span class="arrow">▶</span>
+            Live Upload Matrix
+            <span class="badge uploading" id="matrix-summary" style="display:none">0 hosts active</span>
+        </summary>
+        <div class="section-body">
+            <div id="upload-matrix-body" class="upload-matrix">
+                <div class="empty-state">No active uploads</div>
+            </div>
+        </div>
+    </details>
+
     <!-- ════════ NODES ════════ -->
     <details class="section" open>
         <summary>
@@ -1023,7 +1064,7 @@ function toggleAutoRefresh() {
 function startLivePoll() {
     stopLivePoll();
     // Poll uploads every 3s for live progress updates
-    livePollTimer = setInterval(pollUploads, 3000);
+    livePollTimer = setInterval(pollUploads, 2000);
 }
 
 function stopLivePoll() {
@@ -1037,6 +1078,7 @@ function pollUploads() {
             if (!data) return;
             updateUploadsSection(data);
             updateMetricsUploads(data);
+            updateUploadMatrix(data);
         })
         .catch(function() {/* silent */});
 }
@@ -1109,6 +1151,91 @@ function updateUploadsSection(data) {
         summary.innerHTML = '<span class="badge uploading">' + active.length + ' uploading</span>';
         summary.style.display = '';
     }
+}
+
+function updateUploadMatrix(data) {
+    var active = data.active || [];
+    var body = document.getElementById('upload-matrix-body');
+    if (!body) return;
+
+    // Group every host's in-flight uploads into one section per host.
+    var groups = {};
+    var order = [];
+    for (var i = 0; i < active.length; i++) {
+        var c = active[i];
+        var hosts = c.hosts || [];
+        for (var j = 0; j < hosts.length; j++) {
+            var h = hosts[j];
+            var name = (h.host || '?');
+            if (!groups[name]) { groups[name] = []; order.push(name); }
+            groups[name].push({
+                status: h.status || 'pending',
+                progress: h.progress || 0,
+                speed: h.speed || '',
+                bytes_current: h.bytes_current || 0,
+                bytes_total: h.bytes_total || 0,
+                channel: c.channel || '',
+                filename: c.filename || ''
+            });
+        }
+    }
+
+    var totalCards = 0;
+    for (var g = 0; g < order.length; g++) totalCards += groups[order[g]].length;
+
+    if (order.length === 0) {
+        body.innerHTML = '<div class="empty-state">No active uploads</div>';
+        var s0 = document.getElementById('matrix-summary');
+        if (s0) s0.style.display = 'none';
+        return;
+    }
+
+    order.sort(); // stable alphabetical host sections
+
+    var html = '';
+    for (var gi = 0; gi < order.length; gi++) {
+        var host = order[gi];
+        var items = groups[host];
+        var hostUploading = 0;
+        for (var z = 0; z < items.length; z++) {
+            if (items[z].status === 'uploading') hostUploading++;
+        }
+        html += '<div class="matrix-section">'
+            + '<div class="matrix-section-head"><span class="matrix-section-title">' + escHtml(host) + '</span>'
+            + '<span class="matrix-section-count">' + items.length + ' upload' + (items.length === 1 ? '' : 's')
+            + (hostUploading ? ' · ' + hostUploading + ' active' : '') + '</span></div>'
+            + '<div class="matrix-section-grid">';
+        for (var k = 0; k < items.length; k++) {
+            var t = items[k];
+            var pct = Math.min(Math.max(t.progress, 0), 100);
+            var cls = t.status === 'done' ? 'ok' : t.status === 'failed' ? 'fail' : t.status === 'pending' ? 'pending' : 'active';
+            var barCls = t.status === 'done' ? 'ok' : t.status === 'failed' ? 'fail' : t.status === 'pending' ? 'pending' : '';
+            html += '<div class="host-card ' + cls + '">'
+                + '<div class="host-card-top"><span class="host-name">' + escHtml(t.channel) + '</span>'
+                + '<span class="host-status">' + escHtml(t.status) + '</span></div>'
+                + '<div class="host-card-file mono" title="' + escAttr(t.filename) + '">' + escHtml(t.filename) + '</div>'
+                + '<div class="progress-bar"><div class="fill ' + barCls + '" style="width:' + pct + '%"></div></div>'
+                + '<div class="host-card-meta"><span>' + Math.round(pct) + '%</span>' + (t.speed ? '<span>' + escHtml(t.speed) + '</span>' : '') + '</div>'
+                + '<div class="host-card-bytes mono">' + (t.bytes_total > 0 ? fmtBytes(t.bytes_current) + ' / ' + fmtBytes(t.bytes_total) : '—') + '</div>'
+                + '</div>';
+        }
+        html += '</div></div>';
+    }
+    body.innerHTML = html;
+
+    var s = document.getElementById('matrix-summary');
+    if (s) {
+        s.style.display = '';
+        s.textContent = order.length + ' host' + (order.length === 1 ? '' : 's') + ' · ' + totalCards + ' upload' + (totalCards === 1 ? '' : 's');
+    }
+}
+
+function fmtBytes(n) {
+    n = Number(n) || 0;
+    if (n >= 1073741824) return (n / 1073741824).toFixed(2) + ' GB';
+    if (n >= 1048576) return (n / 1048576).toFixed(1) + ' MB';
+    if (n >= 1024) return (n / 1024).toFixed(1) + ' KB';
+    return n + ' B';
 }
 
 function escHtml(s) {

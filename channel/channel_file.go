@@ -3,6 +3,7 @@ package channel
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"html/template"
@@ -271,7 +272,7 @@ func (ch *Channel) processPendingMuxPair(videoPath, audioPath string, skipMinDur
 		}
 	}
 
-	if ok, reason := muxOutputLooksValid(finalOutput, videoInfo, audioInfo); !ok {
+	if ok, reason := validateVideoFile(finalOutput, true); !ok {
 		ch.Error("mux: output looks corrupt (%s); uploading sidecars %s and %s separately", reason, filepath.Base(videoPath), filepath.Base(audioPath))
 		_ = os.Remove(finalOutput)
 		ch.MoveToOutputDir(videoPath)
@@ -305,17 +306,84 @@ func (ch *Channel) processPendingMuxPair(videoPath, audioPath string, skipMinDur
 	}
 }
 
-// muxOutputLooksValid returns true if the muxed MP4 exists and contains data.
-// With `-c copy -shortest` the output is intentionally truncated to the shorter
-// track's duration, so we cannot compare file sizes against the input sum.
-// Trust ffmpeg's exit code — if it returned 0 the file is valid.
-func muxOutputLooksValid(outputPath string, _ /*videoInfo*/, _ /*audioInfo*/ os.FileInfo) (bool, string) {
-	finalInfo, err := os.Stat(outputPath)
+// validateVideoFile performs a real integrity check on a finalized video
+// before it is uploaded or kept.  The previous muxOutputLooksValid only
+// checked the file was non-empty, so a structurally-valid but playback-corrupt
+// file (e.g. produced by native fMP4 muxing of incomplete segments) was still
+// uploaded.  We require a valid video stream with positive duration, and —
+// when fullDecode is set — a complete null-decode with no ffmpeg decode errors.
+// Corrupt files are rejected so they are never pushed to a host.
+func validateVideoFile(filePath string, fullDecode bool) (bool, string) {
+	fi, err := os.Stat(filePath)
 	if err != nil {
-		return false, fmt.Sprintf("stat: %s", err.Error())
+		return false, fmt.Sprintf("stat: %v", err)
 	}
-	if finalInfo.Size() == 0 {
-		return false, "empty output"
+	if fi.Size() == 0 {
+		return false, "empty file"
+	}
+
+	probeCtx, probeCancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer probeCancel()
+	out, perr := config.FFprobeCommandContext(probeCtx,
+		"-v", "error",
+		"-select_streams", "v:0",
+		"-show_entries", "stream=codec_type,width,height:format=duration",
+		"-of", "json",
+		filePath,
+	).Output()
+	if perr != nil {
+		return false, fmt.Sprintf("probe failed: %v", perr)
+	}
+	var p struct {
+		Streams []struct {
+			CodecType string `json:"codec_type"`
+			Width     int    `json:"width"`
+			Height    int    `json:"height"`
+		} `json:"streams"`
+		Format struct {
+			Duration string `json:"duration"`
+		} `json:"format"`
+	}
+	if err := json.Unmarshal(out, &p); err != nil {
+		return false, fmt.Sprintf("probe parse: %v", err)
+	}
+	hasVideo := false
+	for _, s := range p.Streams {
+		if s.CodecType == "video" && s.Width > 0 && s.Height > 0 {
+			hasVideo = true
+			break
+		}
+	}
+	if !hasVideo {
+		return false, "no valid video stream"
+	}
+	if d, e := strconv.ParseFloat(p.Format.Duration, 64); e != nil || d <= 0 {
+		return false, "invalid or zero duration"
+	}
+
+	if !fullDecode {
+		return true, ""
+	}
+
+	// Full null-decode catches corruption a probe cannot see (missing/garbage
+	// frames, broken references). Bounded by a deadline so huge files don't
+	// block the pipeline — a timeout is treated as "accept", not "reject".
+	decCtx, decCancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	defer decCancel()
+	decOut, derr := config.FFmpegCommandContext(decCtx,
+		"-v", "error",
+		"-i", filePath,
+		"-f", "null", "-",
+	).CombinedOutput()
+	if derr != nil {
+		if decCtx.Err() == context.DeadlineExceeded {
+			return true, "" // too large to decode in time — accept
+		}
+		ds := string(decOut)
+		if len(ds) > 500 {
+			ds = ds[len(ds)-500:]
+		}
+		return false, fmt.Sprintf("decode error: %v (ffmpeg: %s)", derr, ds)
 	}
 	return true, ""
 }
@@ -1243,11 +1311,23 @@ func UploadOrphanedFile(filePath, thumbURL, spriteURL, previewURL string) bool {
 
 	var results []uploader.UploadResult
 	var success []uploader.UploadResult
+	stageCtx, stageCancel := context.WithTimeout(context.Background(), uploadStageMaxDuration)
+	defer stageCancel()
 	for attempt := 1; attempt <= maxUploadAttempts; attempt++ {
 		if attempt > 1 && len(hostsToTry) == 0 {
 			break
 		}
-		attemptResults := upl.UploadSelected(filePath, hostsToTry)
+		attemptCh := make(chan []uploader.UploadResult, 1)
+		go func() {
+			attemptCh <- upl.UploadSelected(filePath, hostsToTry)
+		}()
+		var attemptResults []uploader.UploadResult
+		select {
+		case attemptResults = <-attemptCh:
+		case <-stageCtx.Done():
+			recoveryLogf(filename, "upload: stage deadline (%s) reached — aborting recovery upload", uploadStageMaxDuration)
+			goto recoveryUploadDone
+		}
 		results = append(results, attemptResults...)
 
 		// Save journal entries for each result
@@ -1293,6 +1373,8 @@ func UploadOrphanedFile(filePath, thumbURL, spriteURL, previewURL string) bool {
 			}
 		}
 	}
+
+recoveryUploadDone:
 
 	if len(success) == 0 {
 		recoveryLogf(filename, "[WARN] all upload attempts exhausted — file will be retried on next restart")

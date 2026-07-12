@@ -1,6 +1,7 @@
 package channel
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"log"
@@ -76,6 +77,26 @@ func GenerateThumbnailForFile(videoPath string) (thumbURL, spriteURL, previewURL
 func fileExists(path string) bool {
 	fi, err := os.Stat(path)
 	return err == nil && !fi.IsDir()
+}
+
+// runFFmpeg runs ffmpeg, returning any stderr output (capped to the last 2 KB)
+// alongside the error.  ffmpeg writes its diagnostics to stderr, so calling
+// .Run() directly only gives the caller "exit status 1" and the real cause
+// (missing codec, invalid filter, image2 muxer requiring -update, etc.) — and
+// therefore the actual fix — is lost.
+func runFFmpeg(ctx context.Context, args ...string) (string, error) {
+	cmd := config.FFmpegCommandContext(ctx, args...)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	err := cmd.Run()
+	if err != nil {
+		out := stderr.String()
+		if len(out) > 2000 {
+			out = out[len(out)-2000:]
+		}
+		return out, err
+	}
+	return "", nil
 }
 
 func generateThumbnailForFile(videoPath string, info, errFn func(string, ...interface{})) (thumbURL, spriteURL, previewURL string) {
@@ -160,7 +181,7 @@ func generateThumbnailForFile(videoPath string, info, errFn func(string, ...inte
 
 		config.AcquireFFmpeg()
 		defer config.ReleaseFFmpeg()
-		err := config.FFmpegCommandContext(thumbCtx,
+		stderr, err := runFFmpeg(thumbCtx,
 			"-y",
 			"-ss", seekPos,
 			"-i", videoPath,
@@ -169,11 +190,12 @@ func generateThumbnailForFile(videoPath string, info, errFn func(string, ...inte
 				thumbWidth, thumbHeight, thumbWidth, thumbHeight),
 			"-c:v", "mjpeg",
 			"-q:v", "5",
+			"-update", "1",
 			thumbJPG,
-		).Run()
+		)
 
 		if err != nil {
-			errFn("thumb: failed for %s: %v", baseName, err)
+			errFn("thumb: failed for %s: %v (ffmpeg: %s)", baseName, err, stderr)
 			thumbDone <- ""
 			return
 		}
@@ -227,20 +249,46 @@ func generateThumbnailForFile(videoPath string, info, errFn func(string, ...inte
 
 		config.AcquireFFmpeg()
 		defer config.ReleaseFFmpeg()
-		err := config.FFmpegCommandContext(spriteCtx,
+		stderr, err := runFFmpeg(spriteCtx,
 			"-y",
 			"-i", videoPath,
 			"-vf", vf,
 			"-frames:v", "1",
 			"-c:v", "mjpeg",
 			"-q:v", "5",
+			"-update", "1",
 			spriteJPG,
-		).Run()
+		)
 
-		if err != nil {
-			errFn("sprite: failed for %s: %v", baseName, err)
-			spriteDone <- ""
-			return
+		// Fallback: if the 4×4 contact-sheet filter fails (e.g. very short or
+		// atypical source where the tile filter can't gather enough frames),
+		// fall back to a single representative frame so sprite generation still
+		// yields a usable image instead of silently dropping.
+		if err != nil || !fileExists(spriteJPG) {
+			if err != nil {
+				errFn("sprite: tile filter failed for %s: %v (ffmpeg: %s) — trying single-frame fallback", baseName, err, stderr)
+			} else {
+				errFn("sprite: tile filter produced no output for %s — trying single-frame fallback", baseName)
+			}
+			fbCtx, fbCancel := context.WithTimeout(context.Background(), 2*time.Minute)
+			defer fbCancel()
+			_, fbErr := runFFmpeg(fbCtx,
+				"-y",
+				"-ss", fmt.Sprintf("%.2f", dur*0.1),
+				"-i", videoPath,
+				"-vframes", "1",
+				"-vf", fmt.Sprintf("scale=%d:%d:force_original_aspect_ratio=decrease,pad=%d:%d:(ow-iw)/2:(oh-ih)/2",
+					spriteCols*spriteFrameW, spriteRows*spriteFrameH, spriteCols*spriteFrameW, spriteRows*spriteFrameH),
+				"-c:v", "mjpeg",
+				"-q:v", "5",
+				"-update", "1",
+				spriteJPG,
+			)
+			if fbErr != nil {
+				errFn("sprite: fallback also failed for %s: %v", baseName, fbErr)
+				spriteDone <- ""
+				return
+			}
 		}
 
 		imgUploader := uploader.NewMultiImageUploader()
@@ -305,8 +353,9 @@ func generateThumbnailForFile(videoPath string, info, errFn func(string, ...inte
 		// Returns true if the preview file was successfully created.
 		generatePreview := func(ctx context.Context) bool {
 			var err error
+			var stderr string
 			if dur <= previewDuration || dur <= 0 {
-				err = config.FFmpegCommandContext(ctx,
+				stderr, err = runFFmpeg(ctx,
 					"-y",
 					"-i", videoPath,
 					"-vf", fmt.Sprintf("scale=%d:-2:flags=lanczos", previewWidth),
@@ -316,7 +365,7 @@ func generateThumbnailForFile(videoPath string, info, errFn func(string, ...inte
 					"-movflags", "+faststart",
 					"-an",
 					previewMP4,
-				).Run()
+				)
 			} else {
 				// Detect PTS offset (e.g. LL-HLS fMP4 segments carry absolute
 				// server timestamps).  trim=start=X uses PTS, so we must adjust.
@@ -350,7 +399,7 @@ func generateThumbnailForFile(videoPath string, info, errFn func(string, ...inte
 					strings.Join(concatInputs, "") +
 					fmt.Sprintf("concat=n=%d:v=1:a=0[out]", previewSegments)
 
-				err = config.FFmpegCommandContext(ctx,
+				stderr, err = runFFmpeg(ctx,
 					"-y",
 					"-i", videoPath,
 					"-filter_complex", filterComplex,
@@ -361,17 +410,17 @@ func generateThumbnailForFile(videoPath string, info, errFn func(string, ...inte
 					"-movflags", "+faststart",
 					"-an",
 					previewMP4,
-				).Run()
+				)
 
 				if err != nil || !fileExists(previewMP4) {
 					if err != nil {
-						errFn("preview: complex filter failed for %s: %v, trying simple fallback", baseName, err)
+						errFn("preview: complex filter failed for %s: %v (ffmpeg: %s), trying simple fallback", baseName, err, stderr)
 					} else {
 						errFn("preview: complex filter produced no output for %s, trying simple fallback", baseName)
 					}
 					fallbackCtx, fallbackCancel := context.WithTimeout(context.Background(), 5*time.Minute)
 					defer fallbackCancel()
-					err = config.FFmpegCommandContext(fallbackCtx,
+					stderr, err = runFFmpeg(fallbackCtx,
 						"-y",
 						"-ss", fmt.Sprintf("%.2f", dur*0.3),
 						"-i", videoPath,
@@ -383,7 +432,7 @@ func generateThumbnailForFile(videoPath string, info, errFn func(string, ...inte
 						"-movflags", "+faststart",
 						"-an",
 						previewMP4,
-					).Run()
+					)
 				}
 			}
 

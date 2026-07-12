@@ -35,8 +35,8 @@ func dialWithTuning(timeout time.Duration) func(ctx context.Context, network, ad
 		}
 		if tcp, ok := conn.(*net.TCPConn); ok {
 			tcp.SetNoDelay(true)
-			tcp.SetWriteBuffer(262144)
-			tcp.SetReadBuffer(262144)
+			tcp.SetWriteBuffer(1048576)
+			tcp.SetReadBuffer(1048576)
 		}
 		return conn, nil
 	}
@@ -52,11 +52,14 @@ func newNoProxyClient(timeout time.Duration) *http.Client {
 		Transport: &http.Transport{
 			Proxy:                 nil, // never use environment proxy
 			DialContext:           dialWithTuning(30 * time.Second),
+			DisableCompression:    true,
 			MaxIdleConns:          200,
 			MaxIdleConnsPerHost:   50,
 			IdleConnTimeout:       120 * time.Second,
 			TLSHandshakeTimeout:   15 * time.Second,
 			ExpectContinueTimeout: 1 * time.Second,
+			WriteBufferSize:       1 << 20,
+			ReadBufferSize:        1 << 20,
 		},
 	}
 }
@@ -75,6 +78,7 @@ func newNoProxyClient(timeout time.Duration) *http.Client {
 // a hard 30s deadline on every dial attempt.
 func newDefaultClient(timeout time.Duration) *http.Client {
 	transport := &http.Transport{
+		DisableCompression:    true,
 		MaxIdleConns:          200,
 		MaxIdleConnsPerHost:   50,
 		IdleConnTimeout:       120 * time.Second,
@@ -82,6 +86,8 @@ func newDefaultClient(timeout time.Duration) *http.Client {
 		ResponseHeaderTimeout: 30 * time.Second,
 		ExpectContinueTimeout: 1 * time.Second,
 		DialContext:           dialWithTuning(30 * time.Second),
+		WriteBufferSize:       1 << 20,
+		ReadBufferSize:        1 << 20,
 	}
 
 	if proxyEnv := os.Getenv("ALL_PROXY"); proxyEnv != "" {
@@ -133,22 +139,49 @@ func newDefaultClient(timeout time.Duration) *http.Client {
 	}
 }
 
+// uploadClientTimeout bounds a single upload request end-to-end (including
+// sending the request body).  Previously 120m: a host that accepted the
+// connection but stalled could hold an upload attempt for two hours, and with
+// up to 8 retry attempts that could hang a file for ~16h.  60m is still
+// generous for multi-GB uploads on normal links while surfacing stalls far
+// sooner.  The pipeline also enforces an overall per-file stage deadline.
+const uploadClientTimeout = 60 * time.Minute
+
 // newDirectClient creates an HTTP client with NO proxy at all. Use for hosts
 // whose CDN endpoints are unreachable through the configured proxy (e.g.
 // StreamWish, VidHide on Hetzner-only CDNs).
 func newDirectClient(timeout time.Duration) *http.Client {
-	transport := &http.Transport{
-		MaxIdleConns:          200,
-		MaxIdleConnsPerHost:   50,
-		IdleConnTimeout:       120 * time.Second,
-		TLSHandshakeTimeout:   15 * time.Second,
-		ResponseHeaderTimeout: 30 * time.Second,
-		ExpectContinueTimeout: 1 * time.Second,
-		DialContext:           dialWithTuning(30 * time.Second),
-	}
 	return &http.Client{
 		Timeout:   timeout,
-		Transport: transport,
+		Transport: newUploadTransport(false),
+	}
+}
+
+// newUploadTransport returns an *http.Transport tuned for high-throughput,
+// large-file uploads to third-party video hosts.
+//
+//	- WriteBufferSize/ReadBufferSize of 1MB raise the transport's internal copy
+//	  buffer far above Go's 4KB default. Go's own benchmarks (golang.org/issue/22618)
+//	  show this yields ~3x upload throughput because TLS writes are no longer
+//	  chopped into tiny chunks.
+//	- dialWithTuning adds TCP_NODELAY and 1MB socket buffers.
+//	- Proxy is explicitly nil so uploads never route through the Chaturbate
+//	  SOCKS5 proxy (only Chaturbate/CDN traffic should use it).
+//	- DisableCompression avoids wasting CPU on gzip of already-compressed video.
+func newUploadTransport(disableKeepAlives bool) *http.Transport {
+	return &http.Transport{
+		Proxy:                 nil,
+		DialContext:           dialWithTuning(30 * time.Second),
+		DisableKeepAlives:     disableKeepAlives,
+		DisableCompression:    true,
+		MaxIdleConns:          100,
+		MaxIdleConnsPerHost:   100,
+		IdleConnTimeout:       120 * time.Second,
+		TLSHandshakeTimeout:   15 * time.Second,
+		ResponseHeaderTimeout: 90 * time.Second,
+		ExpectContinueTimeout: 1 * time.Second,
+		WriteBufferSize:       1 << 20,
+		ReadBufferSize:        1 << 20,
 	}
 }
 
@@ -195,8 +228,8 @@ func multipartStreamWithProgress(fields map[string]string, fileField, filePath, 
 		return nil, 0, "", nil, fmt.Errorf("open: %w", err)
 	}
 
-	// Buffered reader with 512KB buffer for fewer syscalls during upload
-	bufFile := bufio.NewReaderSize(file, 512*1024)
+	// Buffered reader with a 2MB buffer for fewer syscalls during upload.
+	bufFile := bufio.NewReaderSize(file, 2*1024*1024)
 	var fileReader io.Reader = bufFile
 	if host != "" {
 		fileReader = NewProgressReaderWithCallback(bufFile, fi.Size(), host, progress)
@@ -224,6 +257,32 @@ func newKeyRing(keys []string) *keyRing {
 		}
 	}
 	return &keyRing{keys: cleaned}
+}
+
+// keyRingRegistry caches keyRings by their key-set so rotation state survives
+// across MultiHostUploader instances.  Previously every upload call built a
+// fresh uploader (and thus a fresh keyRing starting at index 0), so only the
+// first key was ever used — exhausting its 20-files/day quota while the other
+// keys sat idle.  Sharing the ring by key-set makes round-robin persist across
+// every file processed in the process.
+var (
+	keyRingRegistryMu sync.Mutex
+	keyRingRegistry   = map[string]*keyRing{}
+)
+
+func sharedKeyRing(keys []string) *keyRing {
+	if len(keys) == 0 {
+		return newKeyRing(keys)
+	}
+	key := strings.Join(keys, "\x00")
+	keyRingRegistryMu.Lock()
+	defer keyRingRegistryMu.Unlock()
+	if kr, ok := keyRingRegistry[key]; ok {
+		return kr
+	}
+	kr := newKeyRing(keys)
+	keyRingRegistry[key] = kr
+	return kr
 }
 
 func (kr *keyRing) current() string {

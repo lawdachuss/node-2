@@ -465,7 +465,7 @@ func (ch *Channel) watchLoopSC(ctx context.Context, client *internal.Req, p *str
 // with a short delay so a brief blip during CDN token rollover doesn't trigger
 // the full 3-minute grace period.
 func (ch *Channel) fetchStreamWithRetry(ctx context.Context, client *internal.Req, siteImpl site.Site) (*site.StreamInfo, error) {
-	const maxAttempts = 5
+	const maxAttempts = 3
 	var lastErr error
 	for attempt := 0; attempt < maxAttempts; attempt++ {
 		info, err := siteImpl.FetchStream(ctx, client, ch.Config.Username)

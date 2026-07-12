@@ -21,8 +21,8 @@ type VidHideUploader struct {
 
 func NewVidHideUploader(apiKeys []string) *VidHideUploader {
 	return &VidHideUploader{
-		keys:   newKeyRing(apiKeys),
-		client: newDirectClient(120 * time.Minute),
+		keys:   sharedKeyRing(apiKeys),
+		client: newDirectClient(uploadClientTimeout),
 	}
 }
 
@@ -59,7 +59,7 @@ func (u *VidHideUploader) UploadWithProgress(filePath string, progress ProgressF
 
 	// Try each key at most once; on permanent (quota) error, rotate to next key.
 	attempts := u.keys.count()
-	maxRetriesPerKey := 3
+	maxRetriesPerKey := 2
 	var lastErr error
 
 	for ki := 0; ki < attempts; ki++ {

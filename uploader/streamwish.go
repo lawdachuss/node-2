@@ -22,8 +22,8 @@ type StreamWishUploader struct {
 
 func NewStreamWishUploader(apiKeys []string) *StreamWishUploader {
 	return &StreamWishUploader{
-		keys:   newKeyRing(apiKeys),
-		client: newDirectClient(120 * time.Minute),
+		keys:   sharedKeyRing(apiKeys),
+		client: newDirectClient(uploadClientTimeout),
 	}
 }
 
@@ -63,7 +63,7 @@ func (u *StreamWishUploader) UploadWithProgress(filePath string, progress Progre
 	// (quota) error the next iteration takes the following key; transient errors
 	// retry the same key up to 3 times (standard backoff).
 	attempts := u.keys.count()
-	maxRetriesPerKey := 3
+	maxRetriesPerKey := 2
 	var lastErr error
 
 	for ki := 0; ki < attempts; ki++ {

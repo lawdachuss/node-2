@@ -1011,12 +1011,12 @@ func (m *Manager) PublishUploadState() {
 	var entries []entity.UploadEntry
 	m.Channels.Range(func(_, value any) bool {
 		ch := value.(*channel.Channel)
-		e := ch.UploadEntry()
-		if e.Filename == "" && e.Status == "" {
+		es := ch.UploadEntry()
+		if len(es) == 0 {
 			return true
 		}
 		state.Active = true
-		entries = append(entries, e)
+		entries = append(entries, es...)
 		return true
 	})
 	if len(entries) == 0 {
@@ -1058,9 +1058,9 @@ func (m *Manager) UploadEntries() *entity.UploadsResponse {
 	resp := &entity.UploadsResponse{}
 	m.Channels.Range(func(_, value any) bool {
 		ch := value.(*channel.Channel)
-		e := ch.UploadEntry()
-		if e.Filename != "" || e.Status != "" {
-			resp.Active = append(resp.Active, e)
+		es := ch.UploadEntry()
+		if len(es) > 0 {
+			resp.Active = append(resp.Active, es...)
 		}
 		queued := ch.PipelineQueue.QueuedEntries()
 		resp.Pending = append(resp.Pending, queued...)
