@@ -327,8 +327,7 @@ jobs:
           if (-not [string]::IsNullOrWhiteSpace($env:SUPABASE_URL)) {
             $sb = Get-Content "$repoDir\.env" -Raw -ErrorAction SilentlyContinue
             if ($sb -eq $null) { $sb = "" }
-            function SetOrAdd($key, $val) {
-              param($k, $v)
+            function SetOrAdd($k, $v) {
               if ($sb -match "(?m)^$k=") { $script:sb = $sb -replace "(?m)^$k=.*`$", "$k=$v" }
               else { $script:sb = $sb.TrimEnd("`r","`n") + "`n$k=$v`n" }
             }
