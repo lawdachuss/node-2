@@ -547,3 +547,15 @@ jobs:
           while (-not (Test-Path $uploadFlag) -and ([DateTimeOffset]::UtcNow.ToUnixTimeSeconds() - $waitStart) -lt 240) { Start-Sleep -Seconds 15 }
           if (Test-Path $uploadFlag) { Remove-Item $uploadFlag -Force }
           gh workflow run secure-rdp.yml --repo $env:GITHUB_REPOSITORY --ref $env:GITHUB_REF_NAME
+
+      - name: Cleanup on Cancel
+        if: always()
+        shell: powershell
+        run: |
+          Write-Host "[CLEANUP] Killing DVR and tunnel processes..."
+          Get-Process chaturbate-dvr -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+          Get-Process cloudflared -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+          Unregister-ScheduledTask -TaskName "ChaturbateDVR" -Confirm:$false -ErrorAction SilentlyContinue
+          Unregister-ScheduledTask -TaskName "CloudflareTunnel" -Confirm:$false -ErrorAction SilentlyContinue
+          Remove-Item "D:\repos\node-3\tunnel-url.txt" -Force -ErrorAction SilentlyContinue
+          Write-Host "[CLEANUP] Done"
