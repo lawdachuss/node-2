@@ -257,16 +257,21 @@ func generateThumbnailForFile(videoPath string, info, errFn func(string, ...inte
 	// O(frames) not O(video_duration).  The 15-minute context is a generous
 	// ceiling for very slow/resource-constrained hosts, not a typical cost.
 	go func() {
+		var spriteCancel context.CancelFunc
 		defer func() {
 			if r := recover(); r != nil {
 				log.Printf("PANIC [sprite] generating sprite for %s: %v", baseName, r)
+				if spriteCancel != nil {
+					spriteCancel()
+				}
 				select {
 				case spriteDone <- "":
 				default:
 				}
 			}
 		}()
-		spriteCtx, spriteCancel := context.WithTimeout(context.Background(), 15*time.Minute)
+		var spriteCtx context.Context
+		spriteCtx, spriteCancel = context.WithTimeout(context.Background(), 15*time.Minute)
 		defer spriteCancel()
 
 		spriteJPG := videoPath + ".sprite.jpg"
@@ -388,16 +393,21 @@ func generateThumbnailForFile(videoPath string, info, errFn func(string, ...inte
 	//
 	// Uploaded to Catbox.moe (free, permanent, CDN-backed) with LobFile as fallback.
 	go func() {
+		var previewCancel context.CancelFunc
 		defer func() {
 			if r := recover(); r != nil {
 				log.Printf("PANIC [preview] generating preview for %s: %v", baseName, r)
+				if previewCancel != nil {
+					previewCancel()
+				}
 				select {
 				case previewDone <- "":
 				default:
 				}
 			}
 		}()
-		previewCtx, previewCancel := context.WithTimeout(context.Background(), 15*time.Minute)
+		var previewCtx context.Context
+		previewCtx, previewCancel = context.WithTimeout(context.Background(), 15*time.Minute)
 		defer previewCancel()
 
 		previewMP4 := videoPath + ".preview.mp4"
@@ -409,7 +419,7 @@ func generateThumbnailForFile(videoPath string, info, errFn func(string, ...inte
 		}()
 
 		waitForPreviewFile := func() bool {
-			for delay := 0; delay < 8; delay++ {
+			for delay := 0; delay < 14; delay++ {
 				if fileExists(previewMP4) {
 					return true
 				}
@@ -428,13 +438,19 @@ func generateThumbnailForFile(videoPath string, info, errFn func(string, ...inte
 				// Duration unknown (probe failed). Encoding the whole file as
 				// the preview would produce a multi-GB clip for long videos, so
 				// cap to the first previewDuration seconds from the start.
+				// For LL-HLS files the first frame starts at ptsOffset, so
+				// seek to ptsOffset to avoid a black/garbled preview.
+				seekStart := "0"
+				if ptsOffset > 0 {
+					seekStart = fmt.Sprintf("%.2f", ptsOffset)
+				}
 				stderr, err = runFFmpeg(ctx,
 					"-y",
-					"-ss", "0",
+					"-ss", seekStart,
 					"-i", videoPath,
 					"-t", fmt.Sprintf("%.2f", previewDuration),
 				"-vf", fmt.Sprintf("scale=%d:-2:flags=lanczos,fps=30", previewWidth),
-				"-vsync", "cfr",
+				"-vsync", "vfr",
 				"-c:v", "libx264",
 				"-preset", "fast",
 				"-crf", "23",
@@ -447,7 +463,7 @@ func generateThumbnailForFile(videoPath string, info, errFn func(string, ...inte
 				"-y",
 				"-i", videoPath,
 				"-vf", fmt.Sprintf("scale=%d:-2:flags=lanczos,fps=30", previewWidth),
-				"-vsync", "cfr",
+				"-vsync", "vfr",
 					"-c:v", "libx264",
 					"-preset", "fast",
 					"-crf", "23",
@@ -496,7 +512,7 @@ func generateThumbnailForFile(videoPath string, info, errFn func(string, ...inte
 					}
 					label := fmt.Sprintf("v%d", i)
 					filterParts = append(filterParts, fmt.Sprintf(
-						"[0:v]trim=start=%.3f:duration=%.3f,setpts=PTS-STARTPTS,fps=30[%s]",
+						"[0:v]trim=start=%.3f:duration=%.3f,setpts=PTS-STARTPTS[%s]",
 						ptsOffset+start, segDuration, label,
 					))
 					concatInputs = append(concatInputs, fmt.Sprintf("[%s]", label))
@@ -515,7 +531,7 @@ func generateThumbnailForFile(videoPath string, info, errFn func(string, ...inte
 					"-i", videoPath,
 					"-filter_complex", filterComplex,
 					"-map", "[out]",
-					"-vsync", "cfr",
+					"-vsync", "vfr",
 					"-c:v", "libx264",
 					"-preset", "fast",
 					"-crf", "23",
@@ -538,7 +554,7 @@ func generateThumbnailForFile(videoPath string, info, errFn func(string, ...inte
 						"-i", videoPath,
 						"-t", fmt.Sprintf("%.2f", previewDuration),
 						"-vf", fmt.Sprintf("scale=%d:-2:flags=lanczos,fps=30", previewWidth),
-						"-vsync", "cfr",
+						"-vsync", "vfr",
 						"-c:v", "libx264",
 						"-preset", "fast",
 						"-crf", "23",
@@ -604,11 +620,7 @@ func generateThumbnailForFile(videoPath string, info, errFn func(string, ...inte
 			}
 			errFn("preview: LobFile failed for %s: %v", baseName, uploadErr)
 
-			errStr := uploadErr.Error()
-			if strings.Contains(errStr, "no such file") ||
-				strings.Contains(errStr, "cannot find") ||
-				strings.Contains(errStr, "stat file") ||
-				strings.Contains(errStr, "open file") {
+			if os.IsNotExist(uploadErr) || os.IsPermission(uploadErr) || strings.HasSuffix(uploadErr.Error(), "no such file or directory") {
 				continue
 			}
 
