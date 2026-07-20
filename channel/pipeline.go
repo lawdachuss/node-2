@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/teacat/chaturbate-dvr/config"
 	"github.com/teacat/chaturbate-dvr/database"
 	"github.com/teacat/chaturbate-dvr/entity"
 	"github.com/teacat/chaturbate-dvr/internal"
@@ -495,7 +496,19 @@ func (p *Pipeline) stageSaveMetadata(ch *Channel) error {
 		ch.Info("upload: preview from host for %s — %s", p.Filename, p.PreviewURL)
 	}
 	if p.ThumbURL == "" && p.PreviewURL == "" {
-		ch.Warn("upload: no thumbnail/preview from SeekStreaming or UPnShare for %s (saved without preview)", p.Filename)
+		ch.Warn("upload: no thumbnail/preview from SeekStreaming or UPnShare for %s — generating local ffmpeg thumbnail as fallback", p.Filename)
+	}
+
+	// Fallback: generate a local thumbnail from the video and upload it so the
+	// recording always has a poster image, even when SeekStreaming/UPnShare did
+	// not provide one (host down, not configured, or did not return a poster).
+	if p.ThumbURL == "" && p.FilePath != "" {
+		if thumbURL, err := p.generateLocalThumbnail(ch); err != nil {
+			ch.Warn("upload: local thumbnail fallback failed for %s: %v", p.Filename, err)
+		} else if thumbURL != "" {
+			p.ThumbURL = thumbURL
+			ch.Info("upload: local thumbnail fallback OK for %s — %s", p.Filename, thumbURL)
+		}
 	}
 
 	if len(p.Links) == 0 {
@@ -516,6 +529,26 @@ func (p *Pipeline) stageSaveMetadata(ch *Channel) error {
 	dur, probeErr := VideoDurationSeconds(p.FilePath)
 	if probeErr != nil {
 		ch.Warn("upload: could not probe duration for %s: %v", p.Filename, probeErr)
+	}
+
+	// Hard minimum-duration gate: never persist a recording shorter than the
+	// configured threshold (default 20 min).  Short segments are meant to be
+	// merged with the next recording via the pending directory; if one slips
+	// through to the save stage we drop it here rather than upload it.
+	minDur := ch.Config.MinDurationBeforeUpload
+	if minDur <= 0 && server.Config != nil {
+		minDur = server.Config.MinDurationBeforeUpload
+	}
+	if minDur > 0 && dur > 0 && dur < float64(minDur) {
+		ch.Warn("upload: %s is %.1fs (< %ds min-duration) — NOT saving/ uploading short recording", p.Filename, dur, minDur)
+		// Clear the journal so a future, longer recording isn't mistaken for
+		// this short one, and mark the pipeline failed so it stops cleanly.
+		if p.FileHash != "" {
+			_ = server.DeleteJournalByHash(p.FileHash)
+		}
+		p.Failed = true
+		p.LastError = fmt.Sprintf("recording too short (%.1fs < %ds)", dur, minDur)
+		return nil
 	}
 
 	if err := server.SaveRecordingWithLinks(
@@ -549,6 +582,53 @@ func (p *Pipeline) stageSaveMetadata(ch *Channel) error {
 
 	ch.Info("upload: saved recording metadata to Supabase for %s", p.Filename)
 	return nil
+}
+
+// generateLocalThumbnail extracts a single frame from the video (at ~10% of its
+// duration, to avoid intro/black frames) and uploads it to an image host so the
+// recording gets a poster image even when SeekStreaming/UPnShare did not provide
+// one.  Returns the hosted URL, or "" if generation/upload is unavailable.
+func (p *Pipeline) generateLocalThumbnail(ch *Channel) (string, error) {
+	dur, err := VideoDurationSeconds(p.FilePath)
+	if err != nil || dur <= 0 {
+		// Fall back to a 5s seek if we can't read duration.
+		dur = 5
+	}
+	seek := dur * 0.1
+	if seek < 1 {
+		seek = 1
+	}
+
+	tmp, err := os.MkdirTemp("", "thumb-")
+	if err != nil {
+		return "", fmt.Errorf("mkdtemp: %w", err)
+	}
+	defer os.RemoveAll(tmp)
+	thumbPath := filepath.Join(tmp, "thumb.jpg")
+
+	genCtx, genCancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer genCancel()
+	cmd := config.FFmpegCommandContext(genCtx,
+		"-y",
+		"-ss", fmt.Sprintf("%.2f", seek),
+		"-i", p.FilePath,
+		"-frames:v", "1",
+		"-vf", "scale=480:-2",
+		"-q:v", "3",
+		thumbPath,
+	)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return "", fmt.Errorf("ffmpeg thumbnail: %w (output: %s)", err, string(out))
+	}
+	if _, statErr := os.Stat(thumbPath); statErr != nil {
+		return "", fmt.Errorf("thumbnail not produced: %w", statErr)
+	}
+
+	url, _, err := uploader.NewMultiImageUploader().Upload(thumbPath)
+	if err != nil {
+		return "", fmt.Errorf("upload thumbnail: %w", err)
+	}
+	return url, nil
 }
 
 // stageCleanup removes all local files once everything is persisted upstream.
