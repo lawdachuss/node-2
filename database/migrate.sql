@@ -161,26 +161,13 @@ CREATE INDEX IF NOT EXISTS idx_tunnels_run_id ON tunnels(run_id);
 CREATE INDEX IF NOT EXISTS idx_tunnels_instance ON tunnels(instance_id);
 
 -- ============================================================================
--- 6. CHANNEL_LOGS
--- ============================================================================
-CREATE TABLE IF NOT EXISTS channel_logs (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    channel_id UUID REFERENCES channels(id) ON DELETE CASCADE,
-    node_id TEXT,
-    username VARCHAR(255) NOT NULL,
-    log_level VARCHAR(20) NOT NULL,
-    message TEXT NOT NULL,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
-
-CREATE INDEX IF NOT EXISTS idx_channel_logs_channel_id ON channel_logs(channel_id, created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_channel_logs_username ON channel_logs(username, created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_channel_logs_created_at ON channel_logs(created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_channel_logs_node_id ON channel_logs(node_id, created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_channel_logs_level ON channel_logs(log_level, created_at DESC);
-
--- Add node_id to existing deployments without recreating the table.
-ALTER TABLE channel_logs ADD COLUMN IF NOT EXISTS node_id TEXT;
+-- 6. CHANNEL_LOGS — REMOVED.
+-- Log persistence to Supabase channel_logs was removed: it grew unbounded
+-- (~1.5M rows / 700MB) and logs are now kept in the local per-node buffer
+-- (server/logbuffer.go) instead. The table is intentionally NOT created in the
+-- optimized backend schema; any remaining SaveLog/GetLogs/CheckChannelLogsSchema
+-- helpers in database/supabase.go are dead code and must not be re-enabled
+-- without recreating this table.
 
 -- ============================================================================
 -- 7. PREVIEW_IMAGES — REMOVED.
@@ -261,11 +248,13 @@ CREATE TABLE IF NOT EXISTS nodes (
     last_heartbeat   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     web_url          TEXT NOT NULL DEFAULT '',
     created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    updated_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    session_deadline TIMESTAMPTZ
 );
 
 CREATE INDEX IF NOT EXISTS idx_nodes_status ON nodes(status);
 CREATE INDEX IF NOT EXISTS idx_nodes_heartbeat ON nodes(last_heartbeat);
+CREATE INDEX IF NOT EXISTS idx_nodes_session_deadline ON nodes(session_deadline);
 
 -- ============================================================================
 -- 12. CHANNEL ASSIGNMENTS
@@ -290,6 +279,7 @@ CREATE TABLE IF NOT EXISTS channel_assignments (
     min_duration_before_upload INT NOT NULL DEFAULT 1200,
     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    last_recorded_at TIMESTAMPTZ,
     PRIMARY KEY (username, site)
 );
 
@@ -297,6 +287,7 @@ CREATE INDEX IF NOT EXISTS idx_ca_assigned_node ON channel_assignments(assigned_
 CREATE INDEX IF NOT EXISTS idx_ca_status ON channel_assignments(status);
 CREATE INDEX IF NOT EXISTS idx_ca_islive ON channel_assignments(is_live);
 CREATE INDEX IF NOT EXISTS idx_ca_heartbeat ON channel_assignments(last_heartbeat);
+CREATE INDEX IF NOT EXISTS idx_ca_last_recorded ON channel_assignments(last_recorded_at);
 
 -- ============================================================================
 -- FUNCTIONS AND TRIGGERS
@@ -454,6 +445,39 @@ BEGIN
 END;
 $$;
 
+-- reassign_channel: atomically moves a channel from one node to another,
+-- guaranteeing a single owner. `assigned_node` is a single FK and the candidate
+-- row is locked with SELECT ... FOR UPDATE SKIP LOCKED, so if several nodes race
+-- to migrate the same channel only one wins; the others get an empty set.
+CREATE OR REPLACE FUNCTION reassign_channel(
+  p_username  TEXT,
+  p_site      TEXT,
+  p_from_node TEXT,
+  p_to_node   TEXT
+)
+RETURNS SETOF channel_assignments
+LANGUAGE plpgsql AS $$
+BEGIN
+  RETURN QUERY
+  WITH cand AS (
+    SELECT username, site
+    FROM channel_assignments
+    WHERE username = p_username
+      AND site = p_site
+      AND assigned_node = p_from_node
+    FOR UPDATE SKIP LOCKED
+  )
+  UPDATE channel_assignments ca
+  SET assigned_node  = p_to_node,
+      status         = 'claimed',
+      assigned_at    = NOW(),
+      last_heartbeat = NOW()
+  FROM cand c
+  WHERE ca.username = c.username AND ca.site = c.site
+  RETURNING ca.*;
+END;
+$$;
+
 -- ============================================================================
 -- PERMISSIONS
 -- ============================================================================
@@ -477,6 +501,7 @@ ALTER TABLE public.channel_assignments OWNER TO anon;
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO anon;
 GRANT EXECUTE ON FUNCTION claim_channels(TEXT, INT) TO anon;
 GRANT EXECUTE ON FUNCTION claim_specific_channel(TEXT, TEXT, TEXT) TO anon;
+GRANT EXECUTE ON FUNCTION reassign_channel(TEXT, TEXT, TEXT, TEXT) TO anon;
 
 -- ============================================================================
 -- RETENTION CLEANUP

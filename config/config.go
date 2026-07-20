@@ -305,10 +305,8 @@ func New(c *cli.Context) (*entity.Config, error) {
 		MixdropEmail:            c.String("mixdrop-email"),
 		MixdropToken:            c.String("mixdrop-token"),
 		SeekStreamingKey:        c.String("seekstreaming-key"),
-		VidHideAPIKeys:          splitCS(c.String("vidhide-api-key")),
-		StreamWishAPIKeys:       splitCS(c.String("streamwish-api-key")),
 		UpnshareKeys:            splitCS(c.String("upnshare-key")),
-		PixelDrainAPIKey:        c.String("pixeldrain-api-key"),
+		NetuAPIKey:              c.String("netu-api-key"),
 		LobFileAPIKey:           c.String("lobfile-api-key"),
 
 		SupabaseURL:    c.String("supabase-url"),

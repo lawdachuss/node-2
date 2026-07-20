@@ -363,9 +363,8 @@ type UpdateConfigRequest struct {
 	MixdropEmail     string `json:"mixdrop_email" form:"mixdrop_email"`
 	MixdropToken     string `json:"mixdrop_token" form:"mixdrop_token"`
 	SeekStreamingKey string `json:"seekstreaming_key" form:"seekstreaming_key"`
-	VidHideAPIKey    string `json:"vidhide_api_key" form:"vidhide_api_key"`
-	StreamWishAPIKey string `json:"streamwish_api_key" form:"streamwish_api_key"`
 	UpnshareKey       string `json:"upnshare_key" form:"upnshare_key"`
+	NetuAPIKey        string `json:"netu_api_key" form:"netu_api_key"`
 	StripchatPDKey    string `json:"stripchat_pdkey" form:"stripchat_pdkey"`
 }
 
@@ -432,9 +431,9 @@ func UpdateConfig(c *gin.Context) {
 
 	// Update uploader credentials
 	if req.VoeSXAPIKey != "" || req.StreamtapeLogin != "" || req.StreamtapeKey != "" || req.MixdropEmail != "" || req.MixdropToken != "" ||
-		req.SeekStreamingKey != "" || req.VidHideAPIKey != "" || req.StreamWishAPIKey != "" || req.UpnshareKey != "" {
+		req.SeekStreamingKey != "" || req.UpnshareKey != "" || req.NetuAPIKey != "" {
 		server.UpdateUploaderCredentials(req.VoeSXAPIKey, req.StreamtapeLogin, req.StreamtapeKey, req.MixdropEmail, req.MixdropToken,
-			req.SeekStreamingKey, req.VidHideAPIKey, req.StreamWishAPIKey, req.UpnshareKey)
+			req.SeekStreamingKey, req.UpnshareKey, req.NetuAPIKey)
 	}
 
 	if err := server.SaveSettings(); err != nil {
@@ -886,16 +885,6 @@ func embedURLForHostLink(host, link string) string {
 	if strings.Contains(normalizedHost, "gofile") || strings.Contains(normalizedLink, "gofile.io/") {
 		return ""
 	}
-	if strings.Contains(normalizedHost, "vidhide") || strings.Contains(normalizedLink, "morencius.com/") {
-		if code := extractFileCode(link); code != "" {
-			return "https://morencius.com/embed/" + code
-		}
-	}
-	if strings.Contains(normalizedHost, "streamwish") || strings.Contains(normalizedLink, "hanerix.com/") || strings.Contains(normalizedLink, "masukestin.com/") {
-		if code := extractFileCode(link); code != "" {
-			return "https://masukestin.com/e/" + code
-		}
-	}
 	if strings.Contains(normalizedHost, "upnshare") || strings.Contains(normalizedLink, "upnshare.com/") {
 		if code := extractFileCode(link); code != "" {
 			return "https://upnshare.com/embed/" + code
@@ -935,16 +924,6 @@ func videoURLForHostLink(host, link string) string {
 		return link
 	case strings.Contains(normalizedHost, "gofile") || strings.Contains(normalizedLink, "gofile.io/"):
 		return ""
-	case strings.Contains(normalizedHost, "vidhide") || strings.Contains(normalizedLink, "morencius.com/"):
-		if code := extractFileCode(link); code != "" {
-			return "https://morencius.com/embed/" + code
-		}
-		return link
-	case strings.Contains(normalizedHost, "streamwish") || strings.Contains(normalizedLink, "hanerix.com/") || strings.Contains(normalizedLink, "masukestin.com/"):
-		if code := extractFileCode(link); code != "" {
-			return "https://masukestin.com/e/" + code
-		}
-		return link
 	case strings.Contains(normalizedHost, "upnshare") || strings.Contains(normalizedLink, "upnshare.com/"):
 		if code := extractFileCode(link); code != "" {
 			return "https://upnshare.com/embed/" + code

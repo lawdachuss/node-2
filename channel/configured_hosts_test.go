@@ -25,9 +25,8 @@ func TestConfiguredUploadHostsIncludesSeekStreaming(t *testing.T) {
 		MixdropEmail:       "a@b.c",
 		MixdropToken:       "tok",
 		SeekStreamingKey:   "ss-key",
-		VidHideAPIKeys:     []string{"vh-key"},
-		StreamWishAPIKeys:  []string{"sw-key"},
 		UpnshareKeys:       []string{"us-key"},
+		NetuAPIKey:         "netu-key",
 	}
 
 	hosts := configuredUploadHosts()
@@ -39,7 +38,7 @@ func TestConfiguredUploadHostsIncludesSeekStreaming(t *testing.T) {
 		}
 		return false
 	}
-	for _, want := range []string{"GoFile", "VOE.sx", "Streamtape", "Mixdrop", "SeekStreaming", "VidHide", "StreamWish", "UPnShare"} {
+	for _, want := range []string{"GoFile", "VOE.sx", "Streamtape", "Mixdrop", "SeekStreaming", "UPnShare", "Netu"} {
 		if !has(want) {
 			t.Errorf("configuredUploadHosts() missing %q; got %v", want, hosts)
 		}
@@ -48,11 +47,13 @@ func TestConfiguredUploadHostsIncludesSeekStreaming(t *testing.T) {
 
 // TestConfiguredUploadHostsMinimal confirms the minimal case still works and
 // that IsAlreadyFullyUploaded's "len(hosts) == 0 -> false" guard is never hit
-// when only the always-available hosts (GoFile + PixelDrain) are present.
+// when only the always-available hosts (GoFile) are present.  VidHide and
+// StreamWish were removed entirely because their uploads were failing, so they
+// are no longer expected here.
 func TestConfiguredUploadHostsMinimal(t *testing.T) {
 	oldConfig := server.Config
 	defer func() { server.Config = oldConfig }()
-	server.Config = &entity.Config{} // no API keys -> GoFile + PixelDrain
+	server.Config = &entity.Config{} // no API keys -> GoFile only
 
 	hosts := configuredUploadHosts()
 	has := func(name string) bool {
@@ -63,12 +64,12 @@ func TestConfiguredUploadHostsMinimal(t *testing.T) {
 		}
 		return false
 	}
-	for _, want := range []string{"GoFile", "PixelDrain"} {
+	for _, want := range []string{"GoFile"} {
 		if !has(want) {
 			t.Fatalf("expected %q in hosts, got %v", want, hosts)
 		}
 	}
-	if len(hosts) != 2 {
-		t.Fatalf("expected exactly [GoFile PixelDrain], got %v", hosts)
+	if len(hosts) != 1 {
+		t.Fatalf("expected exactly [GoFile], got %v", hosts)
 	}
 }

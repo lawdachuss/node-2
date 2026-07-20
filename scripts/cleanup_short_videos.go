@@ -163,21 +163,9 @@ func deleteRecordingCompletely(r recording) error {
 		}
 	}
 
-	// Delete preview images
-	path := fmt.Sprintf("/preview_images?filename=eq.%s", url.QueryEscape(r.Filename))
-	resp, err := supabaseRequest("DELETE", path, nil)
-	if err != nil {
-		return fmt.Errorf("delete preview images: %w", err)
-	}
-	resp.Body.Close()
-	if resp.StatusCode >= 400 {
-		b, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("delete preview images HTTP %d: %s", resp.StatusCode, string(b))
-	}
-
 	// Delete recording
-	path = fmt.Sprintf("/recordings?filename=eq.%s", url.QueryEscape(r.Filename))
-	resp, err = supabaseRequest("DELETE", path, nil)
+	path := fmt.Sprintf("/recordings?filename=eq.%s", url.QueryEscape(r.Filename))
+	resp, err := supabaseRequest("DELETE", path, nil)
 	if err != nil {
 		return fmt.Errorf("delete recording: %w", err)
 	}

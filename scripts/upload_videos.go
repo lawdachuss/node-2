@@ -123,8 +123,6 @@ func main() {
 		MixdropEmail:      os.Getenv("MIXDROP_EMAIL"),
 		MixdropToken:      firstNonEmpty(os.Getenv("MIXDROP_TOKEN"), os.Getenv("MIXDROP_KEY")),
 		SeekStreamingKey:  os.Getenv("SEEKSTREAMING_KEY"),
-		VidHideAPIKeys:    splitCS(os.Getenv("VIDHIDE_API_KEY")),
-		StreamWishAPIKeys: splitCS(os.Getenv("STREAMWISH_API_KEY")),
 		UpnshareKeys:      splitCS(os.Getenv("UPNSHARE_KEY")),
 	}
 
@@ -136,12 +134,10 @@ func main() {
 			}
 			return fmt.Sprintf("<len=%d>", len(s))
 		}
-		log.Printf("uploader creds: MixdropEmail=%t MixdropToken=%s StreamtapeLogin=%t StreamtapeKey=%s SeekStreaming=%s VidHide=%s StreamWish=%s Upnshare=%s",
+		log.Printf("uploader creds: MixdropEmail=%t MixdropToken=%s StreamtapeLogin=%t StreamtapeKey=%s SeekStreaming=%s Upnshare=%s",
 			server.Config.MixdropEmail != "", mask(server.Config.MixdropToken),
 			server.Config.StreamtapeLogin != "", mask(server.Config.StreamtapeKey),
 			mask(server.Config.SeekStreamingKey),
-			mask(strings.Join(server.Config.VidHideAPIKeys, ",")),
-			mask(strings.Join(server.Config.StreamWishAPIKeys, ",")),
 			mask(strings.Join(server.Config.UpnshareKeys, ",")),
 		)
 	}
@@ -213,12 +209,10 @@ func main() {
 			server.Config.MixdropEmail,
 			server.Config.MixdropToken,
 			server.Config.SeekStreamingKey,
-			server.Config.VidHideAPIKeys,
-			server.Config.StreamWishAPIKeys,
 			&scriptLogger{},
 			server.Config.UpnshareKeys,
-			server.Config.PixelDrainAPIKey,
 			server.Config.LobFileAPIKey,
+			server.Config.NetuAPIKey,
 		)
 
 		results := upl.UploadToAll(p)

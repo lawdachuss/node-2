@@ -216,12 +216,10 @@ func (p *Pipeline) stageUploadVideos(ch *Channel) error {
 		cfg.MixdropEmail,
 		cfg.MixdropToken,
 		cfg.SeekStreamingKey,
-		cfg.VidHideAPIKeys,
-		cfg.StreamWishAPIKeys,
 		ch,
 		cfg.UpnshareKeys,
-		cfg.PixelDrainAPIKey,
 		cfg.LobFileAPIKey,
+		cfg.NetuAPIKey,
 	)
 
 	allHosts := upl.AvailableHosts()
@@ -866,16 +864,15 @@ func (pq *PipelineQueue) processPipeline(p *Pipeline) {
 		ch.SetUploadProgress(filename, "uploading to hosts", 5, 0, 0, 0, 0, "", nil)
 
 		var uploadErr error
-		go func() {
+		func() {
 			defer func() {
 				if r := recover(); r != nil {
-					ch.Error("pipeline: upload goroutine panicked for %s: %v", filename, r)
+					ch.Error("pipeline: upload panicked for %s: %v", filename, r)
 					uploadErr = fmt.Errorf("upload panic: %v", r)
 				}
 			}()
 			uploadErr = p.stageUploadVideos(ch)
 		}()
-		_ = uploadErr
 
 		if uploadErr != nil {
 			ch.Error("pipeline: upload stage failed for %s: %v", filename, uploadErr)

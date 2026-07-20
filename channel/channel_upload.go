@@ -29,17 +29,9 @@ func embedURLFromLink(host, link string) string {
 		return link
 	case "SeekStreaming":
 		return link
-	case "VidHide":
-		code := link[strings.LastIndex(link, "/")+1:]
-		if code != "" {
-			return "https://morencius.com/embed/" + code
-		}
-	case "StreamWish":
-		code := link[strings.LastIndex(link, "/")+1:]
-		if code != "" {
-			return "https://masukestin.com/e/" + code
-		}
 	case "UPnShare":
+		return link
+	case "Netu":
 		return link
 	}
 	return ""
@@ -113,12 +105,10 @@ func (ch *Channel) uploadFile(filePath string) bool {
 		cfg.MixdropEmail,
 		cfg.MixdropToken,
 		cfg.SeekStreamingKey,
-		cfg.VidHideAPIKeys,
-		cfg.StreamWishAPIKeys,
 		ch, // Channel implements uploader.Logger
 		cfg.UpnshareKeys,
-		cfg.PixelDrainAPIKey,
 		cfg.LobFileAPIKey,
+		cfg.NetuAPIKey,
 	)
 
 	allHosts := upl.AvailableHosts()

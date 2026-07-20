@@ -212,10 +212,8 @@ type Config struct {
 	MixdropEmail     string
 	MixdropToken     string
 	SeekStreamingKey string
-	VidHideAPIKeys     []string
-	StreamWishAPIKeys  []string
 	UpnshareKeys       []string
-	PixelDrainAPIKey   string // free, unlimited, never-expires file host (preview/VTT fallback + video host)
+	NetuAPIKey         string // Netu.tv (.tv / .ac) video host API key
 	LobFileAPIKey      string // free, unlimited, never-expires file host (preview fallback)
 
 	SupabaseURL    string

@@ -133,30 +133,6 @@ func main() {
 		fmt.Printf("  Cleared %d GIF preview_url(s) in recordings\n", recCount)
 	}
 
-	// ---- preview_images table ----
-	fmt.Println("=== preview_images table ===")
-	piCount, err := countMatches("/preview_images?" + gifFilter)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "ERROR querying preview_images: %v\n", err)
-		os.Exit(1)
-	}
-	fmt.Printf("  Found %d preview_image(s) with GIF preview_url\n", piCount)
-	if piCount > 0 {
-		body := []byte(`{"preview_url": ""}`)
-		resp, err := supabaseRequest("PATCH", "/preview_images?preview_url=ilike.*.gif", body)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "ERROR patching preview_images: %v\n", err)
-			os.Exit(1)
-		}
-		resp.Body.Close()
-		if resp.StatusCode >= 400 {
-			b, _ := io.ReadAll(resp.Body)
-			fmt.Fprintf(os.Stderr, "ERROR patching preview_images: HTTP %d: %s\n", resp.StatusCode, string(b))
-			os.Exit(1)
-		}
-		fmt.Printf("  Cleared %d GIF preview_url(s) in preview_images\n", piCount)
-	}
-
 	// ---- pipeline_states table ----
 	fmt.Println("=== pipeline_states table ===")
 	psFilter := "preview_url=ilike.*.gif&select=file_hash,preview_url"

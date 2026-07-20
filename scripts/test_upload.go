@@ -8,8 +8,9 @@ import (
 	"log"
 	"os"
 	"strings"
-	"time"
 
+	"github.com/teacat/chaturbate-dvr/entity"
+	"github.com/teacat/chaturbate-dvr/server"
 	"github.com/teacat/chaturbate-dvr/uploader"
 )
 
@@ -39,75 +40,19 @@ func loadDotEnv(path string) error {
 	return s.Err()
 }
 
-type testLogger struct{}
-
-func (testLogger) Info(format string, a ...any)  { log.Printf("INFO: "+format, a...) }
-func (testLogger) Error(format string, a ...any) { log.Printf("ERROR: "+format, a...) }
-
-func main() {
-	if err := loadDotEnv(".env"); err != nil {
-		log.Fatalf("loading .env: %v", err)
+func splitCS(s string) []string {
+	if s == "" {
+		return nil
 	}
-
-	videoPath := "videos/completed/357054_medium.mp4"
-	if _, err := os.Stat(videoPath); os.IsNotExist(err) {
-		log.Fatalf("video not found: %s", videoPath)
-	}
-
-	seekStreamingKey := os.Getenv("SEEKSTREAMING_KEY")
-	vidHideAPIKey := os.Getenv("VIDHIDE_API_KEY")
-	streamWishAPIKey := os.Getenv("STREAMWISH_API_KEY")
-
-	log.Printf("SeekStreaming key: %s", mask(seekStreamingKey))
-	log.Printf("VidHide key: %s", mask(vidHideAPIKey))
-	log.Printf("StreamWish key: %s", mask(streamWishAPIKey))
-
-	// Test SeekStreaming
-	if seekStreamingKey != "" {
-		log.Println("=== Testing SeekStreaming ===")
-		ss := uploader.NewSeekStreamingUploader(seekStreamingKey)
-		start := time.Now()
-		url, err := ss.Upload(videoPath)
-		if err != nil {
-			log.Printf("SeekStreaming FAILED: %v", err)
-		} else {
-			log.Printf("SeekStreaming SUCCESS (%v): %s", time.Since(start).Round(time.Second), url)
+	parts := strings.Split(s, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p != "" {
+			out = append(out, p)
 		}
-	} else {
-		log.Println("SeekStreaming: no key, skipping")
 	}
-
-	// Test VidHide
-	if vidHideAPIKey != "" {
-		log.Println("=== Testing VidHide ===")
-		vh := uploader.NewVidHideUploader(strings.Split(vidHideAPIKey, ","))
-		start := time.Now()
-		url, err := vh.Upload(videoPath)
-		if err != nil {
-			log.Printf("VidHide FAILED: %v", err)
-		} else {
-			log.Printf("VidHide SUCCESS (%v): %s", time.Since(start).Round(time.Second), url)
-		}
-	} else {
-		log.Println("VidHide: no key, skipping")
-	}
-
-	// Test StreamWish
-	if streamWishAPIKey != "" {
-		log.Println("=== Testing StreamWish ===")
-		sw := uploader.NewStreamWishUploader(strings.Split(streamWishAPIKey, ","))
-		start := time.Now()
-		url, err := sw.Upload(videoPath)
-		if err != nil {
-			log.Printf("StreamWish FAILED: %v", err)
-		} else {
-			log.Printf("StreamWish SUCCESS (%v): %s", time.Since(start).Round(time.Second), url)
-		}
-	} else {
-		log.Println("StreamWish: no key, skipping")
-	}
-
-	fmt.Println("\nDone.")
+	return out
 }
 
 func mask(s string) string {
@@ -118,4 +63,85 @@ func mask(s string) string {
 		return "<too-short>"
 	}
 	return s[:4] + "..." + s[len(s)-4:]
+}
+
+type testLogger struct{}
+
+func (testLogger) Info(format string, a ...any)  { log.Printf("INFO: "+format, a...) }
+func (testLogger) Error(format string, a ...any) { log.Printf("ERROR: "+format, a...) }
+
+func main() {
+	envPath := ".env"
+	if len(os.Args) > 1 {
+		envPath = os.Args[1]
+	}
+	if err := loadDotEnv(envPath); err != nil {
+		log.Fatalf("loading %s: %v", envPath, err)
+	}
+
+	videoPath := "videos/completed/357054_medium.mp4"
+	if len(os.Args) > 2 {
+		videoPath = os.Args[2]
+	}
+	if _, err := os.Stat(videoPath); os.IsNotExist(err) {
+		log.Fatalf("video not found: %s", videoPath)
+	}
+
+	server.Config = &entity.Config{
+		VoeSXAPIKey:        os.Getenv("VOESX_API_KEY"),
+		StreamtapeLogin:    os.Getenv("STREAMTAPE_LOGIN"),
+		StreamtapeKey:      os.Getenv("STREAMTAPE_API_KEY"),
+		MixdropEmail:       os.Getenv("MIXDROP_EMAIL"),
+		MixdropToken:       os.Getenv("MIXDROP_KEY"),
+		SeekStreamingKey:   os.Getenv("SEEKSTREAMING_KEY"),
+		UpnshareKeys:       splitCS(os.Getenv("UPNSHARE_KEY")),
+		NetuAPIKey:         os.Getenv("NETU_API_KEY"),
+		LobFileAPIKey:      os.Getenv("LOBFILE_API_KEY"),
+	}
+
+	log.Printf("Testing upload of %s", videoPath)
+	log.Printf("Configured hosts: GoFile (always), VOE.sx=%s Streamtape=%s Mixdrop=%s SeekStreaming=%s UPnShare=%s Netu=%s LobFile=%s",
+		mask(server.Config.VoeSXAPIKey),
+		mask(server.Config.StreamtapeKey),
+		mask(server.Config.MixdropToken),
+		mask(server.Config.SeekStreamingKey),
+		fmt.Sprintf("%d key(s)", len(server.Config.UpnshareKeys)),
+		mask(server.Config.NetuAPIKey),
+		mask(server.Config.LobFileAPIKey),
+	)
+
+	upl := uploader.NewMultiHostUploader(
+		server.Config.VoeSXAPIKey,
+		server.Config.StreamtapeLogin,
+		server.Config.StreamtapeKey,
+		server.Config.MixdropEmail,
+		server.Config.MixdropToken,
+		server.Config.SeekStreamingKey,
+		testLogger{},
+		server.Config.UpnshareKeys,
+		server.Config.LobFileAPIKey,
+		server.Config.NetuAPIKey,
+	)
+
+	available := upl.AvailableHosts()
+	log.Printf("Active hosts: %v", available)
+
+	results := upl.UploadToAll(videoPath)
+	allOK := true
+	for _, r := range results {
+		if r.Error != nil {
+			allOK = false
+			log.Printf("  [FAIL] %-14s %v", r.Host, r.Error)
+		} else {
+			log.Printf("  [ OK ] %-14s %s", r.Host, r.DownloadLink)
+		}
+	}
+	if len(results) == 0 {
+		log.Println("No hosts were active — set at least one API key.")
+	}
+	if allOK {
+		fmt.Println("\nAll active hosts succeeded.")
+	} else {
+		fmt.Println("\nSome hosts failed (see above).")
+	}
 }

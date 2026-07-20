@@ -148,8 +148,7 @@ func newDefaultClient(timeout time.Duration) *http.Client {
 const uploadClientTimeout = 60 * time.Minute
 
 // newDirectClient creates an HTTP client with NO proxy at all. Use for hosts
-// whose CDN endpoints are unreachable through the configured proxy (e.g.
-// StreamWish, VidHide on Hetzner-only CDNs).
+// whose CDN endpoints are unreachable through the configured proxy.
 func newDirectClient(timeout time.Duration) *http.Client {
 	return &http.Client{
 		Timeout:   timeout,
@@ -348,10 +347,8 @@ type MultiHostUploader struct {
 	streamtape    *StreamtapeUploader
 	mixdrop       *MixdropUploader
 	seekstreaming *SeekStreamingUploader
-	vidhide       *VidHideUploader
-	streamwish    *StreamWishUploader
 	upnshare      *UPnShareUploader
-	pixeldrain    *PixelDrainUploader
+	netu          *NetuUploader
 	log           Logger
 	hostInitOnce  sync.Once
 	hosts         map[string]uploaderFunc // host name -> upload function, lazy-init
@@ -365,17 +362,11 @@ func (m *MultiHostUploader) initHosts() {
 		if m.hosts != nil {
 			return
 		}
-		swCount, vhCount, upCount := -1, -1, -1
-		if m.streamwish != nil {
-			swCount = m.streamwish.keys.count()
-		}
-		if m.vidhide != nil {
-			vhCount = m.vidhide.keys.count()
-		}
+		upCount := -1
 		if m.upnshare != nil {
 			upCount = m.upnshare.keys.count()
 		}
-		fmt.Printf("[UPLOADER] initHosts: streamwish=%d vidhide=%d upnshare=%d\n", swCount, vhCount, upCount)
+		fmt.Printf("[UPLOADER] initHosts: upnshare=%d\n", upCount)
 		m.hosts = map[string]uploaderFunc{}
 		m.hosts["GoFile"] = m.gofile.UploadWithProgress
 		if m.voesx != nil && m.voesx.apiKey != "" {
@@ -390,28 +381,17 @@ func (m *MultiHostUploader) initHosts() {
 		if m.seekstreaming != nil && m.seekstreaming.key != "" {
 			m.hosts["SeekStreaming"] = m.seekstreaming.UploadWithProgress
 		}
-		if m.vidhide != nil && m.vidhide.keys.count() > 0 {
-			m.hosts["VidHide"] = m.vidhide.UploadWithProgress
-		}
-		if m.streamwish != nil && m.streamwish.keys.count() > 0 {
-			m.hosts["StreamWish"] = m.streamwish.UploadWithProgress
-		}
 		if m.upnshare != nil && m.upnshare.keys.count() > 0 {
 			m.hosts["UPnShare"] = m.upnshare.UploadWithProgress
 		}
-		// PixelDrain: free, unlimited storage, never expires. Treated as a
-		// primary permanent host (like GoFile/Streamtape/Mixdrop), not an
-		// optional extra. API key may be empty for anonymous uploads.
-		if m.pixeldrain != nil {
-			m.hosts["PixelDrain"] = m.pixeldrain.UploadWithProgress
+		if m.netu != nil && m.netu.apiKey != "" {
+			m.hosts["Netu"] = m.netu.UploadWithProgress
 		}
 	})
 }
 
 // NewMultiHostUploader creates a new multi-host uploader.
-// vidHideAPIKeys and streamWishAPIKeys support comma-separated multiple keys
-// for automatic key rotation on daily quota limits.
-func NewMultiHostUploader(voeSXAPIKey, streamtapeLogin, streamtapeKey, mixdropEmail, mixdropToken, seekStreamingKey string, vidHideAPIKeys, streamWishAPIKeys []string, log Logger, upnshareKeys []string, pixeldrainAPIKey, lobfileAPIKey string) *MultiHostUploader {
+func NewMultiHostUploader(voeSXAPIKey, streamtapeLogin, streamtapeKey, mixdropEmail, mixdropToken, seekStreamingKey string, log Logger, upnshareKeys []string, lobfileAPIKey, netuAPIKey string) *MultiHostUploader {
 	if log == nil {
 		log = &nilLogger{}
 	}
@@ -421,10 +401,8 @@ func NewMultiHostUploader(voeSXAPIKey, streamtapeLogin, streamtapeKey, mixdropEm
 		streamtape:    NewStreamtapeUploader(streamtapeLogin, streamtapeKey),
 		mixdrop:       NewMixdropUploader(mixdropEmail, mixdropToken),
 		seekstreaming: NewSeekStreamingUploader(seekStreamingKey),
-		vidhide:       NewVidHideUploader(vidHideAPIKeys),
-		streamwish:    NewStreamWishUploader(streamWishAPIKeys),
 		upnshare:      NewUPnShareUploader(upnshareKeys),
-		pixeldrain:    NewPixelDrainUploader(pixeldrainAPIKey),
+		netu:          NewNetuUploader(netuAPIKey),
 		log:           log,
 	}
 }
@@ -472,7 +450,7 @@ func IsPermanentError(err error) bool {
 //
 // NOTE: a plain "use of closed network connection" / "forcibly closed" is NOT a
 // proxy error. It is a generic transient TCP drop that can happen even on direct
-// connections (StreamWish/VidHide use newDirectClient with no proxy). Treating it
+// connections (direct-client hosts use newDirectClient with no proxy). Treating it
 // as a proxy error caused hosts to be permanently skipped on the first blip, even
 // though a fresh attempt would normally succeed. See IsTransientNetworkError.
 func IsProxyError(err error) bool {

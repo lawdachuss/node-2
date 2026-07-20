@@ -57,20 +57,6 @@ func main() {
 		log.Printf("Catbox OK: %s", url)
 	}
 
-	// Test PixelDrain
-	apiKey := os.Getenv("PIXELDRAIN_API_KEY")
-	if apiKey != "" {
-		log.Println("=== Testing PixelDrain ===")
-		pd := uploader.NewPixelDrainUploader(apiKey)
-		if url, err := pd.Upload(testFile); err != nil {
-			log.Printf("PixelDrain FAILED: %v", err)
-		} else {
-			log.Printf("PixelDrain OK: %s", url)
-		}
-	} else {
-		log.Println("PixelDrain: no API key, skipping")
-	}
-
 	// Test LobFile (requires LOBFILE_API_KEY env var)
 	lobfileAPIKey := os.Getenv("LOBFILE_API_KEY")
 	if lobfileAPIKey != "" {

@@ -310,27 +310,15 @@ func main() {
 				Value:   "",
 			},
 			&cli.StringFlag{
-				Name:    "vidhide-api-key",
-				Usage:   "API key for VidHide uploads",
-				EnvVars: []string{"VIDHIDE_API_KEY"},
-				Value:   "",
-			},
-			&cli.StringFlag{
-				Name:    "streamwish-api-key",
-				Usage:   "API key for StreamWish uploads",
-				EnvVars: []string{"STREAMWISH_API_KEY"},
-				Value:   "",
-			},
-		&cli.StringFlag{
 			Name:    "upnshare-key",
 			Usage:   "API key for UPnShare uploads",
 			EnvVars: []string{"UPNSHARE_KEY"},
 			Value:   "",
 		},
 		&cli.StringFlag{
-			Name:    "pixeldrain-api-key",
-			Usage:   "API key for PixelDrain uploads (free, unlimited, never-expire host)",
-			EnvVars: []string{"PIXELDRAIN_API_KEY"},
+			Name:    "netu-api-key",
+			Usage:   "API key for Netu.tv (.tv / .ac) uploads",
+			EnvVars: []string{"NETU_API_KEY"},
 			Value:   "",
 		},
 		&cli.StringFlag{
@@ -404,24 +392,16 @@ func start(c *cli.Context) error {
 		return fmt.Errorf("new config: %w", err)
 	}
 	fmt.Printf("[startup] config loaded in %v\n", time.Since(started).Round(time.Millisecond))
-	fmt.Printf("[startup] upload keys — streamwish=%d vidhide=%d upnshare=%d\n",
-		len(server.Config.StreamWishAPIKeys), len(server.Config.VidHideAPIKeys),
-		len(server.Config.UpnshareKeys))
+	fmt.Printf("[startup] upload keys — upnshare=%d netu=%d\n",
+		len(server.Config.UpnshareKeys), len([]string{server.Config.NetuAPIKey}))
 
 	// ── Startup self-checks: fail LOUD, never silently ───────────────────
-	// These catch the two classes of "works on some nodes, silently degrades on
-	// others" problems at boot instead of mid-recording:
-	//   1. ffmpeg/ffprobe missing -> mux/probe/normalize/thumbnail/preview fail.
-	//   2. channel_logs schema gap (unapplied migrate.sql) -> node_id always
-	//      NULL and the error-log query times out.
+	// ffmpeg/ffprobe missing -> mux/probe/normalize/thumbnail/preview fail.
 	if err := config.ValidateFFmpeg(); err != nil {
 		fmt.Printf("⚠️  [startup] FFMPEG/FFPROBE CHECK FAILED: %v\n", err)
 		fmt.Println("   A/V muxing and duration probing will FAIL. Install ffmpeg/ffprobe")
 		fmt.Println("   (e.g. `winget install ffmpeg`) or set FFMPEG_PATH in .env to a valid binary path.")
 	}
-	// NOTE: the old channel_logs schema self-check (CheckChannelLogsSchema)
-	// was removed because logs no longer live in Supabase. See the log-sink
-	// note above.
 
 	// Load cookies from Supabase if available (overrides .env)
 	if server.Config.SupabaseURL != "" && server.Config.SupabaseAPIKey != "" {

@@ -1159,12 +1159,10 @@ func configuredUploadHosts() []string {
 		cfg.MixdropEmail,
 		cfg.MixdropToken,
 		cfg.SeekStreamingKey,
-		cfg.VidHideAPIKeys,
-		cfg.StreamWishAPIKeys,
 		nil,
 		cfg.UpnshareKeys,
-		cfg.PixelDrainAPIKey,
 		cfg.LobFileAPIKey,
+		cfg.NetuAPIKey,
 	)
 	return upl.AvailableHosts()
 }

@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
-	"sync/atomic"
 	"time"
 )
 
@@ -575,93 +574,6 @@ func (c *Client) DeactivateOldTunnels(instanceID string) error {
 	return c.patch(fmt.Sprintf("/tunnels?is_active=eq.true&instance_id=eq.%s", url.QueryEscape(instanceID)), map[string]interface{}{
 		"is_active": false,
 	})
-}
-
-// ============================================================================
-// CHANNEL LOGS
-// ============================================================================
-
-type ChannelLog struct {
-	ID        string `json:"id,omitempty"`
-	ChannelID string `json:"channel_id,omitempty"`
-	NodeID    string `json:"node_id,omitempty"`
-	Username  string `json:"username"`
-	LogLevel  string `json:"log_level"`
-	Message   string `json:"message"`
-	CreatedAt string `json:"created_at,omitempty"`
-}
-
-// SaveLog creates a new log entry
-func (c *Client) SaveLog(log *ChannelLog) error {
-	var result []ChannelLog
-	return c.post("/channel_logs", log, &result)
-}
-
-// channelLogsNodeIDUnsupported is set once we detect the live channel_logs
-// table lacks the node_id column (PGRST204). After that we stop sending it,
-// avoiding a per-line retry storm on deployments that haven't run the migration.
-var channelLogsNodeIDUnsupported atomic.Bool
-
-// SaveLogRobust saves a log entry, tolerating a missing node_id column on older
-// schemas (PGRST204). Some deployments have not run the channel_logs migration
-// that adds node_id; in that case we retry the insert without it so persistence
-// still works. Once the migration is applied, node_id is populated normally.
-func (c *Client) SaveLogRobust(log *ChannelLog) error {
-	if channelLogsNodeIDUnsupported.Load() {
-		return c.SaveLog(stripLogNodeID(log))
-	}
-	err := c.SaveLog(log)
-	if err != nil && strings.Contains(err.Error(), "PGRST204") {
-		channelLogsNodeIDUnsupported.Store(true)
-		return c.SaveLog(stripLogNodeID(log))
-	}
-	return err
-}
-
-func stripLogNodeID(l *ChannelLog) *ChannelLog {
-	return &ChannelLog{
-		ChannelID: l.ChannelID,
-		Username:  l.Username,
-		LogLevel:  l.LogLevel,
-		Message:   l.Message,
-	}
-}
-
-// GetLogs retrieves logs for a channel
-func (c *Client) GetLogs(username string, limit int) ([]ChannelLog, error) {
-	var logs []ChannelLog
-	err := c.get(fmt.Sprintf("/channel_logs?username=eq.%s&order=created_at.desc&limit=%d", url.QueryEscape(username), limit), &logs)
-	return logs, err
-}
-
-// CheckChannelLogsSchema probes the live schema for the pieces added by
-// database/migrate.sql that the running code depends on. A missing node_id
-// column means every log is persisted with NULL node_id (so per-node debugging
-// and the checknodes breakdown are useless), and a missing log_level index
-// means the error-log query in checknodes full-scans a huge table and times out
-// with HTTP 500. The probe is non-mutating and safe to call at startup; it
-// returns a list of human-readable problems (empty == healthy) so a node can
-// fail LOUD instead of silently logging into a broken table forever.
-func (c *Client) CheckChannelLogsSchema() []string {
-	var problems []string
-
-	// node_id column present? A GET selecting a non-existent column returns
-	// HTTP 400 with PGRST204 ("Could not find the column").
-	resp, err := c.request("GET", "/channel_logs?select=node_id&limit=1", nil)
-	if err != nil {
-		problems = append(problems, "could not probe channel_logs: "+err.Error())
-	} else {
-		body, _ := io.ReadAll(resp.Body)
-		resp.Body.Close()
-		if resp.StatusCode == 400 && strings.Contains(string(body), "PGRST204") {
-			problems = append(problems,
-				"channel_logs.node_id column is MISSING — run database/migrate.sql "+
-					"(needs: ALTER TABLE channel_logs ADD COLUMN IF NOT EXISTS node_id TEXT; "+
-					"CREATE INDEX IF NOT EXISTS idx_channel_logs_level ON channel_logs(log_level, created_at DESC))")
-		}
-	}
-
-	return problems
 }
 
 // ============================================================================

@@ -26,8 +26,6 @@ type persistedSettings struct {
 	MixdropEmail     string `json:"mixdrop_email,omitempty"`
 	MixdropToken     string `json:"mixdrop_token,omitempty"`
 	SeekStreamingKey string `json:"seekstreaming_key,omitempty"`
-	VidHideAPIKey    string `json:"vidhide_api_key,omitempty"`
-	StreamWishAPIKey string `json:"streamwish_api_key,omitempty"`
 	UpnshareKeys     string `json:"upnshare_keys,omitempty"`
 	StripchatPDKey   string `json:"stripchat_pdkey,omitempty"`
 }
@@ -47,8 +45,6 @@ func SaveSettings() error {
 		MixdropEmail:     Config.MixdropEmail,
 		MixdropToken:     Config.MixdropToken,
 		SeekStreamingKey: Config.SeekStreamingKey,
-		VidHideAPIKey:    strings.Join(Config.VidHideAPIKeys, ","),
-		StreamWishAPIKey: strings.Join(Config.StreamWishAPIKeys, ","),
 		UpnshareKeys:     strings.Join(Config.UpnshareKeys, ","),
 		StripchatPDKey:   Config.StripchatPDKey,
 	}
@@ -111,12 +107,6 @@ func LoadSettings() error {
 	if s.SeekStreamingKey != "" {
 		Config.SeekStreamingKey = s.SeekStreamingKey
 	}
-	if s.VidHideAPIKey != "" {
-		Config.VidHideAPIKeys = splitCS(s.VidHideAPIKey)
-	}
-	if s.StreamWishAPIKey != "" {
-		Config.StreamWishAPIKeys = splitCS(s.StreamWishAPIKey)
-	}
 	if s.UpnshareKeys != "" {
 		Config.UpnshareKeys = splitCS(s.UpnshareKeys)
 	}
@@ -167,7 +157,7 @@ func extractCookie(cookieStr, name string) string {
 }
 
 // UpdateUploaderCredentials updates upload service credentials and protects concurrent access with a mutex.
-func UpdateUploaderCredentials(voeSXAPIKey, streamtapeLogin, streamtapeKey, mixdropEmail, mixdropToken, seekStreamingKey, vidHideAPIKey, streamWishAPIKey, upnshareKey string) {
+func UpdateUploaderCredentials(voeSXAPIKey, streamtapeLogin, streamtapeKey, mixdropEmail, mixdropToken, seekStreamingKey, upnshareKey, netuAPIKey string) {
 	ConfigMu.Lock()
 	if voeSXAPIKey != "" {
 		Config.VoeSXAPIKey = voeSXAPIKey
@@ -187,14 +177,11 @@ func UpdateUploaderCredentials(voeSXAPIKey, streamtapeLogin, streamtapeKey, mixd
 	if seekStreamingKey != "" {
 		Config.SeekStreamingKey = seekStreamingKey
 	}
-	if vidHideAPIKey != "" {
-		Config.VidHideAPIKeys = splitCS(vidHideAPIKey)
-	}
-	if streamWishAPIKey != "" {
-		Config.StreamWishAPIKeys = splitCS(streamWishAPIKey)
-	}
 	if upnshareKey != "" {
 		Config.UpnshareKeys = splitCS(upnshareKey)
+	}
+	if netuAPIKey != "" {
+		Config.NetuAPIKey = netuAPIKey
 	}
 	ConfigMu.Unlock()
 }

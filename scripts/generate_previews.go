@@ -59,13 +59,6 @@ type uploadLinkRow struct {
 	URL  string `json:"url"`
 }
 
-type previewRow struct {
-	Filename     string `json:"filename"`
-	ThumbnailURL string `json:"thumbnail_url"`
-	SpriteURL    string `json:"sprite_url"`
-	PreviewURL   string `json:"preview_url"`
-}
-
 func supabaseGet(path string) ([]byte, error) {
 	base := os.Getenv("SUPABASE_URL")
 	key := os.Getenv("SUPABASE_API_KEY")
@@ -208,9 +201,6 @@ func main() {
 	server.Config = &entity.Config{
 		SupabaseURL:    supabaseURL,
 		SupabaseAPIKey: supabaseKey,
-		GitHubToken:    os.Getenv("GITHUB_ACCESS_TOKEN"),
-		GitHubRepo:     os.Getenv("GITHUB_REPO"),
-		GitHubBranch:   os.Getenv("GITHUB_BRANCH"),
 	}
 
 	dbClient := server.GetDBClient()
@@ -232,44 +222,16 @@ func main() {
 	}
 	log.Printf("Found %d recordings", len(recordings))
 
-	log.Println("Fetching existing preview images...")
-	prevData, err := supabaseGet("/preview_images?limit=500")
-	if err != nil {
-		log.Printf("WARN: could not fetch preview images: %v", err)
-	}
-	var previews []previewRow
-	if prevData != nil {
-		json.Unmarshal(prevData, &previews)
-	}
-
+	log.Println("Fetching existing recordings with previews...")
 	hasPreview := map[string]bool{}
-	for _, p := range previews {
-		if p.ThumbnailURL != "" || p.SpriteURL != "" {
-			hasPreview[p.Filename] = true
+	for _, r := range recordings {
+		if r.ThumbnailURL != "" || r.SpriteURL != "" {
+			hasPreview[r.Filename] = true
 		}
 	}
 
-	// Phase 1: fix recordings table for recordings that already have preview images
-	for _, p := range previews {
-		if p.ThumbnailURL == "" && p.SpriteURL == "" {
-			continue
-		}
-		for _, r := range recordings {
-			if r.Filename == p.Filename {
-				if r.ThumbnailURL != "" && r.SpriteURL != "" {
-					continue
-				}
-				log.Printf("  fixing recordings table for %s (thumb=%s, sprite=%s)",
-					p.Filename, p.ThumbnailURL, p.SpriteURL)
-				if err := server.UpdateRecordingThumbnails(p.Filename, p.ThumbnailURL, p.SpriteURL, p.PreviewURL); err != nil {
-					log.Printf("  WARN: failed to update %s: %v", p.Filename, err)
-				} else {
-					log.Printf("  DONE: updated %s", p.Filename)
-				}
-				break
-			}
-		}
-	}
+	// Phase 1: no-op — previews now live directly on the recordings table, so
+	// there is nothing to backfill from a separate preview_images table.
 
 	// Phase 2: download + generate for recordings still missing previews
 	workDir := filepath.Join("videos", ".preview_work")
@@ -337,14 +299,9 @@ func main() {
 		log.Printf("  preview: %s", previewURL)
 		log.Printf("  sprite VTT: %s", spriteVTTURL)
 
-		log.Printf("  saving to preview_images table...")
-		if err := server.SavePreviewLinks(r.Filename, thumbURL, spriteURL, previewURL, spriteVTTURL); err != nil {
-			log.Printf("  WARN: SavePreviewLinks failed: %v", err)
-		}
-
 		log.Printf("  updating recordings table...")
-		if err := server.UpdateRecordingThumbnails(r.Filename, thumbURL, spriteURL, previewURL); err != nil {
-			log.Printf("  WARN: UpdateRecordingThumbnails failed: %v", err)
+		if err := server.UpdateRecordingMediaURLs(r.Filename, thumbURL, previewURL); err != nil {
+			log.Printf("  WARN: UpdateRecordingMediaURLs failed: %v", err)
 		}
 
 		os.Remove(localPath)
