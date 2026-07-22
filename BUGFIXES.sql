@@ -89,7 +89,7 @@ AS $$
           NOW()
         FROM public.requests rq
         LEFT JOIN public.user_notification_preferences unp
-          ON unp.user_id = rq.user_id
+          ON unp.user_id::text = rq.user_id::text
           AND unp.notification_type = 'recording_available'
         WHERE rq.performer_username IS NOT NULL
           AND LOWER(rq.performer_username) = LOWER(v_username)
@@ -97,7 +97,7 @@ AS $$
           AND (unp.enabled IS NULL OR unp.enabled = true)
           AND NOT EXISTS (
             SELECT 1 FROM public.user_notifications un
-            WHERE un.user_id = rq.user_id
+            WHERE un.user_id::text = rq.user_id::text
               AND un.type = 'recording_available'
               AND un.related_id::text = NEW.recording_id::text
           );
