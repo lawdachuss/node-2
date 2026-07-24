@@ -830,10 +830,16 @@ func (c *Client) EnsureNodeOnline(nodeID string) error {
 }
 
 // UpdateNodeStatus changes the node's status (online/offline/draining).
+// When transitioning to draining or offline, the web_url is also cleared
+// to prevent stale tunnel links from appearing in the dashboard.
 func (c *Client) UpdateNodeStatus(nodeID, status string) error {
-	return c.patch(fmt.Sprintf("/nodes?node_id=eq.%s", url.QueryEscape(nodeID)), map[string]interface{}{
+	body := map[string]interface{}{
 		"status": status,
-	})
+	}
+	if status == "draining" || status == "offline" {
+		body["web_url"] = ""
+	}
+	return c.patch(fmt.Sprintf("/nodes?node_id=eq.%s", url.QueryEscape(nodeID)), body)
 }
 
 // UpdateNodeWebURL sets the public web URL for a node.  Used by the cloudflared
@@ -873,12 +879,13 @@ func (c *Client) GetAliveNodes() ([]Node, error) {
 }
 
 // GetDeadNodes returns node IDs whose heartbeat is older than the timeout.
-// Nodes that are intentionally draining are excluded — they will release their
-// channels as part of the normal shutdown sequence.
+// Includes draining nodes — if a draining node hasn't heartbeated inside the
+// timeout it's effectively dead (e.g. killed by GitHub 6h limit), so its
+// channels must be reclaimed so other nodes can claim them.
 func (c *Client) GetDeadNodes(timeout time.Duration) ([]string, error) {
 	cutoff := time.Now().Add(-timeout).UTC().Format(time.RFC3339)
 	var nodes []Node
-	err := c.get(fmt.Sprintf("/nodes?last_heartbeat=lt.%s&status=neq.draining&select=node_id", url.QueryEscape(cutoff)), &nodes)
+	err := c.get(fmt.Sprintf("/nodes?last_heartbeat=lt.%s&select=node_id", url.QueryEscape(cutoff)), &nodes)
 	if err != nil {
 		return nil, err
 	}

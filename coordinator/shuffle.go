@@ -5,7 +5,6 @@ import (
 	"hash/fnv"
 	"log"
 	"math"
-	"strings"
 	"time"
 
 	"github.com/teacat/chaturbate-dvr/database"
@@ -97,9 +96,6 @@ func (c *Coordinator) runOfflineShuffleCycle() {
 	totalNodes := len(aliveNodes)
 	if totalNodes == 0 {
 		totalNodes = 1
-	}
-	if strings.HasPrefix(c.NodeID, "node-") && totalNodes < 2 {
-		totalNodes = 2
 	}
 
 	// Candidate targets: alive nodes that are NOT this node.
